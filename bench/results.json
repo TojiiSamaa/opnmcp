@@ -1,17 +1,17 @@
 {
-  "generated": "2026-11-05T03:33:50.986Z",
-  "node": "v24.18.0",
-  "platform": "win32-x64",
+  "generated": "2026-11-05T03:37:35.687Z",
+  "node": "v22.23.4",
+  "platform": "linux-x64",
   "ts": {
     "label": "TypeScript (Yuto)",
     "server": "osmcp",
     "tools": 209,
-    "startup_ms": 608.5,
-    "list_median_ms": 13.314,
-    "list_p95_ms": 16.935,
-    "calls_per_s": 352,
-    "concurrent_calls_per_s": 453,
-    "rss_mb": null,
+    "startup_ms": 147.2,
+    "list_median_ms": 6.414,
+    "list_p95_ms": 8.047,
+    "calls_per_s": 828,
+    "concurrent_calls_per_s": 1255,
+    "rss_mb": 182.9,
     "loc": 6097,
     "size_kb": 1080
   },
@@ -19,13 +19,13 @@
     "label": "Rust (Toji)",
     "server": "osmcp",
     "tools": 209,
-    "startup_ms": 156.2,
-    "list_median_ms": 7.101,
-    "list_p95_ms": 8.885,
-    "calls_per_s": 4863,
-    "concurrent_calls_per_s": 10834,
-    "rss_mb": null,
-    "loc": 13548,
-    "size_kb": 8397
+    "startup_ms": 5.2,
+    "list_median_ms": 2.134,
+    "list_p95_ms": 2.4,
+    "calls_per_s": 13565,
+    "concurrent_calls_per_s": 20708,
+    "rss_mb": 18,
+    "loc": 13557,
+    "size_kb": 7361
   }
 }
