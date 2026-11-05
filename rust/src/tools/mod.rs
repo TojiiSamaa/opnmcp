@@ -15,6 +15,7 @@ pub mod network;
 pub mod security;
 pub mod services;
 pub mod shared;
+pub mod simulate;
 pub mod system;
 pub mod vpn;
 
