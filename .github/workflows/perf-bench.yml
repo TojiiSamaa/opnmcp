@@ -95,4 +95,5 @@ jobs:
 
       - name: Signaler une parité cassée
         if: steps.parite.outcome == 'failure'
-        run: echo "::warning::Le Rust n'a plus la parité avec le TypeScript de Yuto : voir le résumé du job."
+        run: |
+          echo "::warning::Le Rust n'a plus la parité avec le TypeScript de Yuto, voir le résumé du job."
