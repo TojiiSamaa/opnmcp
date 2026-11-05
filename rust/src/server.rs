@@ -34,6 +34,8 @@ A refusal such as write_disabled, blocked_endpoint or forbidden is final for thi
 pub struct Registry {
     pub runtime: Arc<Runtime>,
     pub tools: Vec<Arc<ToolDef>>,
+    /// La liste ne dépend que de la configuration, fixe pour la vie du processus.
+    list_cache: std::sync::OnceLock<Value>,
 }
 
 impl Registry {
@@ -86,6 +88,7 @@ impl Registry {
             Registry {
                 runtime: runtime.clone(),
                 tools,
+                list_cache: std::sync::OnceLock::new(),
             }
         }))
     }
@@ -137,6 +140,12 @@ impl Registry {
     }
 
     pub fn tools_list(&self) -> Value {
+        self.list_cache
+            .get_or_init(|| self.build_tools_list())
+            .clone()
+    }
+
+    fn build_tools_list(&self) -> Value {
         let tools: Vec<Value> = self
             .tools
             .iter()

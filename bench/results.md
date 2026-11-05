@@ -1,10 +1,10 @@
 | Mesure | TypeScript | Rust |
 |---|---:|---:|
-| Démarrage (ms) | 891 | 548 |
-| tools/list médiane (ms) | 3.79 | 0.13 |
-| tools/list p95 (ms) | 5.6 | 0.23 |
-| Appels/s en série | 586 | 7 560 |
-| Appels/s à 16 en vol | 882 | 15 990 |
-| Taille livrée (Ko) | 1 080 | 5 698 |
-| Outils exposés | 117 | 1 |
-| Lignes de code | 6 097 | 5 144 |
+| Démarrage (ms) | 609 | 156 |
+| tools/list médiane (ms) | 13.31 | 7.1 |
+| tools/list p95 (ms) | 16.93 | 8.88 |
+| Appels/s en série | 352 | 4 863 |
+| Appels/s à 16 en vol | 453 | 10 834 |
+| Taille livrée (Ko) | 1 080 | 8 397 |
+| Outils exposés | 209 | 209 |
+| Lignes de code | 6 097 | 13 548 |

@@ -168,6 +168,22 @@ npm run catalog     # régénère src/catalog/endpoints.json depuis la documenta
 
 Pour tester sur un vrai pare-feu sans risque : clé API avec des privilèges en lecture, sans `OPNSENSE_ALLOW_WRITES`. Pour vérifier une écriture : `OPNSENSE_DRY_RUN=true` montre ce qui serait envoyé, sans rien envoyer.
 
+## Version Rust (`rust/`)
+
+Portage Rust complet de ce serveur : mêmes 209 outils, mêmes noms, descriptions, schémas et annotations (vérifié par `bench/parite.mjs`), même politique d'accès fail-closed, mêmes protections de rollback. Un seul binaire sans runtime Node.
+
+```bash
+cd rust && cargo build --release      # binaire : target/release/osmcp
+```
+
+Les variables d'environnement et les options (`--http`, `--host`, `--port`, `--list-tools`) sont identiques à la version TypeScript. Les binaires sont produits par le workflow `ci-rust.yml` (Linux x86_64 et arm64, macOS arm64, Windows), publiés en release sur un tag `v*`.
+
+### TypeScript contre Rust
+
+![Banc TypeScript contre Rust](bench/chart.svg)
+
+Les mêmes requêtes MCP stdio sont envoyées aux deux serveurs, face à un faux pare-feu à latence nulle : on mesure le serveur MCP, pas le réseau. Le workflow `perf-bench.yml` teste les deux codes, relance le banc chaque lundi et à chaque changement, puis met à jour `bench/results.json`, `bench/results.md` et le graphe. En local : `node bench/bench.mjs && node bench/chart.mjs`.
+
 ## Remerciements
 
 Ce projet reprend des idées de serveurs MCP existants :

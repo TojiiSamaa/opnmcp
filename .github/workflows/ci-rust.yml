@@ -1,12 +1,12 @@
-name: Rust
+name: ci-rust
 
 on:
   push:
     branches: [rust-port, main]
-    paths: ["rust/**", ".github/workflows/rust.yml"]
+    paths: ["rust/**", ".github/workflows/ci-rust.yml"]
     tags: ["v*"]
   pull_request:
-    paths: ["rust/**", ".github/workflows/rust.yml"]
+    paths: ["rust/**", ".github/workflows/ci-rust.yml"]
 
 permissions:
   contents: read

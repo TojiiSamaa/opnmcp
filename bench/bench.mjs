@@ -32,7 +32,7 @@ function rssKb(pid) {
 }
 
 async function measure(label, cmd) {
-  const env = { ...process.env, OPNSENSE_URL: FAKE_URL, OPNSENSE_API_KEY: "k", OPNSENSE_API_SECRET: "s", OPNSENSE_TOOLSETS: "all" };
+  const env = { ...process.env, OPNSENSE_URL: FAKE_URL, OPNSENSE_API_KEY: "k", OPNSENSE_API_SECRET: "s", OPNSENSE_TOOLSETS: "all", OPNSENSE_ALLOW_WRITES: "true" };
   const t0 = performance.now();
   const child = spawn(cmd[0], cmd.slice(1), { env, stdio: ["pipe", "pipe", "ignore"] });
   const waiting = new Map();

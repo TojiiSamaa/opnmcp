@@ -1,4 +1,4 @@
-name: Banc TS contre Rust
+name: perf-bench
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     - cron: "17 5 * * 1"
   push:
     branches: [rust-port, main]
-    paths: ["src/**", "rust/**", "bench/**", "package.json", ".github/workflows/bench.yml"]
+    paths: ["src/**", "rust/**", "bench/**", "package.json", ".github/workflows/perf-bench.yml"]
   pull_request:
     paths: ["src/**", "rust/**", "bench/**"]
 
