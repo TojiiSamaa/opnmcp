@@ -1,3 +1,5 @@
+**🏆 Toji a gagné : Rust plus rapide sur 5/5 mesures de vitesse**
+
 | Mesure | TypeScript | Rust |
 |---|---:|---:|
 | Démarrage (ms) | 147 | 5.2 |

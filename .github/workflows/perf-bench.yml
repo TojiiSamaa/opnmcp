@@ -1,9 +1,11 @@
 name: perf-bench
 
+# Teste le code de Yuto (TypeScript, dépôt amont) et celui de Toji (Rust), puis met à jour le graphe.
+# Déclencheurs : un changement chez Toji (push), chez Yuto (veille quotidienne du dépôt amont), ou à la main.
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 5 * * 1"
+    - cron: "17 5 * * *"
   push:
     branches: [rust-port, main]
     paths: ["src/**", "rust/**", "bench/**", "package.json", ".github/workflows/perf-bench.yml"]
@@ -15,13 +17,38 @@ permissions:
 
 concurrency:
   group: bench-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   bench:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Identité git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Le TypeScript de Yuto vient toujours de son dépôt : on le fusionne avant de tester, jamais l'inverse.
+      - name: Suivre le code de Yuto
+        if: github.event_name != 'pull_request'
+        id: amont
+        run: |
+          git remote add amont https://github.com/yutho-o/opnmcp.git
+          git fetch --quiet amont main
+          avant=$(git rev-parse HEAD)
+          if ! git merge --no-edit amont/main; then
+            git merge --abort
+            echo "::error::Conflit avec le dépôt de Yuto : il a modifié des fichiers que le portage Rust touche aussi."
+            exit 1
+          fi
+          if [ "$avant" != "$(git rev-parse HEAD)" ]; then
+            echo "Nouveautés de Yuto intégrées :" >> "$GITHUB_STEP_SUMMARY"
+            git log --oneline "$avant..HEAD" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -31,17 +58,22 @@ jobs:
         with:
           workspaces: rust
 
-      - name: Tests et build TypeScript
+      - name: Tests et build TypeScript (code de Yuto)
         run: |
           npm ci
           npm test
           npm run build
-      - name: Tests et build Rust
+      - name: Tests et build Rust (code de Toji)
         working-directory: rust
         run: |
           cargo test --locked
           cargo build --release --locked
 
+      # Un outil ajouté ou changé chez Yuto sans équivalent Rust apparaît ici, et sur le graphe.
+      - name: Parité des outils
+        id: parite
+        continue-on-error: true
+        run: node bench/parite.mjs | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Banc
         run: |
           node bench/bench.mjs
@@ -56,10 +88,11 @@ jobs:
       - name: Publier le graphe (hors pull request)
         if: github.event_name != 'pull_request'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bench/results.json bench/results.md bench/chart.svg
-          if git diff --cached --quiet; then echo "Rien à publier"; exit 0; fi
-          git commit -m "bench: mise à jour des résultats [skip ci]"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git add bench/results.json bench/results.md bench/chart.svg bench/parite.json
+          if ! git diff --cached --quiet; then git commit -m "bench: mise à jour des résultats [skip ci]"; fi
+          git pull --rebase=merges origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Signaler une parité cassée
+        if: steps.parite.outcome == 'failure'
+        run: echo "::warning::Le Rust n'a plus la parité avec le TypeScript de Yuto : voir le résumé du job."

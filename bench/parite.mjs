@@ -42,3 +42,10 @@ console.log("Seulement TS  :", only(T, R));
 console.log("Seulement Rust:", only(R, T));
 const dd = { description: diff((t) => t.description), annotations: diff(ann), "champs d'entrée": diff(props), "champs requis": diff(req), titre: diff((t) => t.title ?? t.annotations?.title) };
 for (const [k, v] of Object.entries(dd)) console.log(`${k} différents (${v.length})`, v.slice(0, 40));
+
+// Résumé lisible par le graphe et par le workflow.
+import { writeFileSync } from "node:fs";
+const ecarts = Object.values(dd).reduce((n, v) => n + v.length, 0);
+const parite = { ts: T.size, rust: R.size, manquants_rust: only(T, R), en_trop_rust: only(R, T), ecarts, details: Object.fromEntries(Object.entries(dd).map(([k, v]) => [k, v.length])) };
+writeFileSync("bench/parite.json", JSON.stringify(parite, null, 2) + "\n");
+process.exit(parite.manquants_rust.length || parite.en_trop_rust.length || ecarts ? 1 : 0);
