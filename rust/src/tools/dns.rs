@@ -397,7 +397,7 @@ pub fn tools() -> Vec<ToolDef> {
         })
         .run(|args, ctx| async move {
             let mut rest = args.obj().clone();
-            rest.remove("uuid");
+            rest.shift_remove("uuid");
             let fields = model_fields(&rest);
             if fields.is_empty() {
                 return Err(OpnError::new(ErrorType::InvalidInput, "Updating the blocklist: no field to change was given."));

@@ -399,8 +399,8 @@ impl Session {
         let outcome: Result<Value> = async {
             let validated = def.input.clone().and([schema::string("instance").opt(), schema::boolean("dry_run").opt()]).validate(&raw).map_err(|m| OpnError::new(ErrorType::InvalidInput, format!("Invalid arguments for {}: {m}", def.name)))?;
             let mut map: Map<String, Value> = validated;
-            let instance_name = map.remove("instance").and_then(|v| v.as_str().map(String::from));
-            let dry_run_arg = map.remove("dry_run").and_then(|v| v.as_bool()) == Some(true);
+            let instance_name = map.shift_remove("instance").and_then(|v| v.as_str().map(String::from));
+            let dry_run_arg = map.shift_remove("dry_run").and_then(|v| v.as_bool()) == Some(true);
             let args = Args(map);
             audit_args = crate::redact::redact_json(&args.to_value());
 

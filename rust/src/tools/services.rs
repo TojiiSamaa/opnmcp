@@ -143,7 +143,7 @@ pub fn tools() -> Vec<ToolDef> {
                     let days = days_until(r.get("valid_to").unwrap_or(&Value::Null));
                     let mut o = r.as_object().cloned().unwrap_or_default();
                     for k in ["crt", "crt_payload", "csr", "csr_payload", "prv", "prv_payload"] {
-                        o.remove(k);
+                        o.shift_remove(k);
                     }
                     o.insert("expires_in_days".into(), json!(days));
                     (days, Value::Object(o))
