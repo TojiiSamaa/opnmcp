@@ -86,18 +86,19 @@ out += `<text x="${PAD}" y="${y}" class="sub small">Le verdict ne compte que la 
 const H = y + 22;
 
 const style = `
-.bg{fill:#ffffff;stroke:#d0d7de}.h1{font-weight:700;font-size:22px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#1f2328}
-.sub{font-size:13px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#59636e}.small{font-size:11px}
-.leg{font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#1f2328}
-.lab{font-weight:600;font-size:14px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#1f2328}
-.val{font-weight:600;font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#1f2328}.inv{fill:#ffffff}
-.ts{fill:#3178c6}.rs{fill:#d9622b}.tsTxt{fill:#3178c6}.rsTxt{fill:#d9622b}
+.bg{fill:#0d1117;stroke:#30363d}
+.h1{font-weight:700;font-size:22px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#f0f6fc}
+.sub{font-size:13px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#9198a1}.small{font-size:11px}
+.leg{font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#e6edf3}
+.lab{font-weight:600;font-size:14px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#e6edf3}
+.val{font-weight:600;font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#e6edf3}.inv{fill:#0d1117}
+.ts{fill:#58a6ff}.rs{fill:#ff8a4c}.tsTxt{fill:#58a6ff}.rsTxt{fill:#ff8a4c}
 .big{font-weight:800;font-size:44px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif}
 .ratio{font-weight:800;font-size:22px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif}
-.banner{fill:#eef1f4}.banner.win{fill:#fdebe0}.verdict{font-weight:700;font-size:16px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#1f2328}.winTxt{fill:#b4491a}
-.tile{fill:#f6f8fa;stroke:#d0d7de}.rule{stroke:#e6e9ed}.ok{font-weight:600;font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#1a7f37}.ko{font-weight:600;font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#cf222e}
-@media (prefers-color-scheme: dark){.bg{fill:#0d1117;stroke:#30363d}.h1,.leg,.lab,.val,.verdict{fill:#e6edf3}.inv{fill:#0d1117}.sub{fill:#9198a1}
-.banner{fill:#161b22}.banner.win{fill:#3a2216}.winTxt{fill:#ff9a64}.tile{fill:#161b22;stroke:#30363d}.rule{stroke:#21262d}.ts,.tsTxt{fill:#58a6ff}.rs,.rsTxt{fill:#ff8a4c}.ok{fill:#3fb950}.ko{fill:#ff7b72}}`;
+.banner{fill:#161b22}.banner.win{fill:#3a2216}
+.verdict{font-weight:700;font-size:16px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#f0f6fc}.winTxt{fill:#ffa56b}
+.tile{fill:#161b22;stroke:#30363d}.rule{stroke:#21262d}
+.ok{font-weight:600;font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#3fb950}.ko{font-weight:600;font-size:12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#ff7b72}`;
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(verdict)}">
 <style>${style}</style>
