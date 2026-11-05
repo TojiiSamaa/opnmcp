@@ -1,7 +1,7 @@
 name: perf-bench
 
-# Teste le code de Yuto (TypeScript, dépôt amont) et celui de Toji (Rust), puis met à jour le graphe.
-# Déclencheurs : un changement chez Toji (push), chez Yuto (veille quotidienne du dépôt amont), ou à la main.
+# Teste le code de Yutho (TypeScript, dépôt amont) et celui de Toji (Rust), puis met à jour le graphe.
+# Déclencheurs : un changement chez Toji (push), chez Yutho (veille quotidienne du dépôt amont), ou à la main.
 on:
   workflow_dispatch:
   schedule:
@@ -31,8 +31,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # Le TypeScript de Yuto vient toujours de son dépôt : on le fusionne avant de tester, jamais l'inverse.
-      - name: Suivre le code de Yuto
+      # Le TypeScript de Yutho vient toujours de son dépôt : on le fusionne avant de tester, jamais l'inverse.
+      - name: Suivre le code de Yutho
         if: github.event_name != 'pull_request'
         id: amont
         run: |
@@ -41,11 +41,11 @@ jobs:
           avant=$(git rev-parse HEAD)
           if ! git merge --no-edit amont/main; then
             git merge --abort
-            echo "::error::Conflit avec le dépôt de Yuto : il a modifié des fichiers que le portage Rust touche aussi."
+            echo "::error::Conflit avec le dépôt de Yutho : il a modifié des fichiers que le portage Rust touche aussi."
             exit 1
           fi
           if [ "$avant" != "$(git rev-parse HEAD)" ]; then
-            echo "Nouveautés de Yuto intégrées :" >> "$GITHUB_STEP_SUMMARY"
+            echo "Nouveautés de Yutho intégrées :" >> "$GITHUB_STEP_SUMMARY"
             git log --oneline "$avant..HEAD" >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -58,7 +58,7 @@ jobs:
         with:
           workspaces: rust
 
-      - name: Tests et build TypeScript (code de Yuto)
+      - name: Tests et build TypeScript (code de Yutho)
         run: |
           npm ci
           npm test
@@ -69,7 +69,7 @@ jobs:
           cargo test --locked
           cargo build --release --locked
 
-      # Un outil ajouté ou changé chez Yuto sans équivalent Rust apparaît ici, et sur le graphe.
+      # Un outil ajouté ou changé chez Yutho sans équivalent Rust apparaît ici, et sur le graphe.
       - name: Parité des outils
         id: parite
         continue-on-error: true
@@ -96,4 +96,4 @@ jobs:
       - name: Signaler une parité cassée
         if: steps.parite.outcome == 'failure'
         run: |
-          echo "::warning::Le Rust n'a plus la parité avec le TypeScript de Yuto, voir le résumé du job."
+          echo "::warning::Le Rust n'a plus la parité avec le TypeScript de Yutho, voir le résumé du job."

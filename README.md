@@ -1,3 +1,7 @@
+<p align="center"><img src="bench/chart.svg" alt="TypeScript de Yutho contre Rust de Toji : mesures et verdict" width="820"></p>
+
+<p align="center"><sub>Mis à jour automatiquement : à chaque changement du Rust, du banc ou du TypeScript, et chaque jour pour suivre le code de Yutho. <a href="#version-rust-rust">Détails</a></sub></p>
+
 # osmcp
 
 Serveur [MCP](https://modelcontextprotocol.io) pour les pare-feu [OPNsense](https://opnsense.org) : il permet à un agent IA de consulter et de modifier un pare-feu par son API, avec des garde-fous.
@@ -9,12 +13,6 @@ Serveur [MCP](https://modelcontextprotocol.io) pour les pare-feu [OPNsense](http
 - **Politique d'accès au plus près du réseau** : tout passe par un seul point de contrôle dans le client HTTP. Un outil annoncé en lecture seule ne peut pas envoyer d'écriture, quel que soit le chemin demandé.
 
 > **État du projet.** Les tests tournent contre un faux serveur écrit d'après le code PHP d'OPNsense, pas contre un vrai pare-feu. Commencez avec une clé API en lecture seule, et gardez un accès console lors des premières écritures.
-
-> ### Cette branche ajoute une version Rust (`rust/`) : mêmes 209 outils, un seul binaire
->
-> ![Banc TypeScript contre Rust](bench/chart.svg)
->
-> Les chiffres ci-dessus se mettent à jour tout seuls : le workflow `perf-bench` récupère chaque jour le code de Yuto, teste le TypeScript et le Rust, vérifie que les 209 outils restent identiques, puis redessine le graphe. [Détails et résultats](#version-rust-rust).
 
 ## Installation
 
@@ -185,8 +183,6 @@ cd rust && cargo build --release      # binaire : target/release/osmcp
 Les variables d'environnement et les options (`--http`, `--host`, `--port`, `--list-tools`) sont identiques à la version TypeScript. Les binaires sont produits par le workflow `ci-rust.yml` (Linux x86_64 et arm64, macOS arm64, Windows), publiés en release sur un tag `v*`.
 
 ### TypeScript contre Rust
-
-![Banc TypeScript contre Rust](bench/chart.svg)
 
 Les mêmes requêtes MCP stdio sont envoyées aux deux serveurs, face à un faux pare-feu à latence nulle : on mesure le serveur MCP, pas le réseau. Le workflow `perf-bench.yml` teste les deux codes, relance le banc chaque lundi et à chaque changement, puis met à jour `bench/results.json`, `bench/results.md` et le graphe. En local : `node bench/bench.mjs && node bench/chart.mjs`.
 

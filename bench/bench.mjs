@@ -1,4 +1,4 @@
-// Banc TS (opnmcp de Yuto) contre Rust (osmcp) : mêmes requêtes MCP stdio contre un faux OPNsense.
+// Banc TS (opnmcp de Yutho) contre Rust (osmcp) : mêmes requêtes MCP stdio contre un faux OPNsense.
 // Usage : node bench/bench.mjs [--ts "node dist/index.js"] [--rust rust/target/release/osmcp] [--out bench/results.json]
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -101,7 +101,7 @@ function loc(dir, ext) {
 }
 
 const results = { generated: new Date().toISOString(), node: process.version, platform: `${process.platform}-${process.arch}` };
-results.ts = await measure("TypeScript (Yuto)", TS_CMD);
+results.ts = await measure("TypeScript (Yutho)", TS_CMD);
 results.ts.loc = loc("src", [".ts"]);
 results.ts.size_kb = existsSync("dist") ? Math.round(dirSize("dist") / 1024) : null;
 results.rust = existsSync(RUST_BIN) ? await measure("Rust (Toji)", [RUST_BIN]) : null;
