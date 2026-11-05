@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "opnsense": {
+      "command": "node",
+      "args": ["/path/to/osmcp/dist/index.js"],
+      "env": {
+        "OPNSENSE_URL": "https://192.168.1.1",
+        "OPNSENSE_API_CREDENTIALS_FILE": "/path/to/apikey.txt",
+        "OPNSENSE_CA_FILE": "/path/to/opnsense-ca.pem",
+        "OPNSENSE_AUDIT_LOG": "/path/to/osmcp-audit.jsonl"
+      }
+    }
+  }
+}
