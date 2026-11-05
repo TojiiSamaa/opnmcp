@@ -1,17 +1,17 @@
 {
-  "generated": "2026-11-05T04:03:32.881Z",
+  "generated": "2026-11-05T04:10:06.564Z",
   "node": "v22.23.4",
   "platform": "linux-x64",
   "ts": {
     "label": "TypeScript (Yutho)",
     "server": "osmcp",
     "tools": 209,
-    "startup_ms": 283.9,
-    "list_median_ms": 12.583,
-    "list_p95_ms": 17.548,
-    "calls_per_s": 409,
-    "concurrent_calls_per_s": 623,
-    "rss_mb": 167.9,
+    "startup_ms": 205.4,
+    "list_median_ms": 10.277,
+    "list_p95_ms": 12.036,
+    "calls_per_s": 562,
+    "concurrent_calls_per_s": 804,
+    "rss_mb": 179.4,
     "loc": 6097,
     "size_kb": 1080
   },
@@ -19,13 +19,13 @@
     "label": "Rust (Toji)",
     "server": "osmcp",
     "tools": 209,
-    "startup_ms": 9.5,
-    "list_median_ms": 3.154,
-    "list_p95_ms": 4.128,
-    "calls_per_s": 5733,
-    "concurrent_calls_per_s": 10871,
-    "rss_mb": 17.5,
-    "loc": 13557,
-    "size_kb": 7361
+    "startup_ms": 6.1,
+    "list_median_ms": 2.319,
+    "list_p95_ms": 2.553,
+    "calls_per_s": 8745,
+    "concurrent_calls_per_s": 15459,
+    "rss_mb": 17.1,
+    "loc": 13554,
+    "size_kb": 7360
   }
 }
