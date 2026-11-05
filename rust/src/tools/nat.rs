@@ -48,6 +48,7 @@ fn nested(input: &Obj, net: &str, port: &str, not: &str) -> Option<Value> {
 }
 
 fn to_port_forward_model(args: &Obj) -> Obj {
+    // Comme le TS : les champs simples dans l'ordre reçu, puis les renommés dans un ordre fixe.
     let renamed = [
         ("ip_protocol", "ipprotocol"),
         ("target_port", "local-port"),
@@ -61,17 +62,20 @@ fn to_port_forward_model(args: &Obj) -> Obj {
         "destination_port",
         "destination_not",
         "enabled",
+        "ip_protocol",
+        "target_port",
+        "description",
     ];
     let mut plain = Obj::new();
     for (k, v) in args {
-        if consumed.contains(&k.as_str()) {
-            continue;
+        if !consumed.contains(&k.as_str()) {
+            plain.insert(k.clone(), v.clone());
         }
-        let name = renamed
-            .iter()
-            .find(|(from, _)| from == k)
-            .map_or(k.as_str(), |(_, to)| *to);
-        plain.insert(name.to_string(), v.clone());
+    }
+    for (from, to) in renamed {
+        if let Some(v) = args.get(from) {
+            plain.insert(to.to_string(), v.clone());
+        }
     }
     if let Some(Value::Bool(enabled)) = args.get("enabled") {
         plain.insert("disabled".into(), json!(!enabled));
@@ -139,19 +143,11 @@ fn outbound_fields() -> Vec<Field> {
 }
 
 fn to_outbound_model(args: &Obj) -> Obj {
-    let renamed: Obj = args
-        .iter()
-        .map(|(k, v)| {
-            (
-                if k == "ip_protocol" {
-                    "ipprotocol".to_string()
-                } else {
-                    k.clone()
-                },
-                v.clone(),
-            )
-        })
-        .collect();
+    // ipprotocol passe en dernier, comme `{ ...rest, ipprotocol }` côté TS.
+    let mut renamed = args.clone();
+    if let Some(v) = renamed.shift_remove("ip_protocol") {
+        renamed.insert("ipprotocol".into(), v);
+    }
     model_fields(&renamed)
 }
 

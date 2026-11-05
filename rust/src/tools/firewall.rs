@@ -48,7 +48,7 @@ fn rule_fields() -> Vec<Field> {
 
 fn rule_model(args: &Obj) -> Obj {
     let mut rest = args.clone();
-    let ipprotocol = rest.remove("ip_protocol");
+    let ipprotocol = rest.shift_remove("ip_protocol");
     if let Some(v) = ipprotocol {
         rest.insert("ipprotocol".into(), v);
     }
@@ -69,7 +69,7 @@ fn alias_fields() -> Vec<Field> {
 
 fn alias_model(args: &Obj) -> Obj {
     let mut rest = args.clone();
-    let content = rest.remove("content");
+    let content = rest.shift_remove("content");
     let mut out = model_fields(&rest);
     // Les entrées d'un alias sont séparées par des retours à la ligne dans le modèle.
     if let Some(Value::Array(a)) = content {
@@ -591,7 +591,7 @@ pub fn tools() -> Vec<ToolDef> {
         .run(|args, ctx| async move {
             let id = args.req("uuid").to_string();
             let mut rest = args.obj().clone();
-            rest.remove("uuid");
+            rest.shift_remove("uuid");
             let fields = rule_model(&rest);
             if fields.is_empty() {
                 return Err(OpnError::new(ErrorType::InvalidInput, "Updating the rule: no field to change was given."));
@@ -1045,8 +1045,8 @@ pub fn tools() -> Vec<ToolDef> {
                 })
                 .map(|r| {
                     let mut rest = r.clone();
-                    rest.remove("__digest__");
-                    rest.remove("__spec__");
+                    rest.shift_remove("__digest__");
+                    rest.shift_remove("__spec__");
                     rest.insert("interface_name".into(), json!(name_of(r.get("interface"))));
                     sparse(&Value::Object(rest))
                 })
@@ -1129,8 +1129,9 @@ pub fn tools() -> Vec<ToolDef> {
             FW,
         )
         .run(|_args, ctx| async move {
-            let (filter, outbound) = futures::try_join!(ctx.api.get_("firewall/migration/count_rules"), ctx.api.get_("firewall/migration/count_outbound"))?;
-            Ok(json!({ "filter": filter, "outbound": outbound }))
+            // Comme Promise.all : les deux requêtes partent même si la première échoue (try_join! annulerait la seconde).
+            let (filter, outbound) = futures::join!(ctx.api.get_("firewall/migration/count_rules"), ctx.api.get_("firewall/migration/count_outbound"));
+            Ok(json!({ "filter": filter?, "outbound": outbound? }))
         }),
     );
     defs
