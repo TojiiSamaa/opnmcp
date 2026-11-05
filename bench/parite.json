@@ -1,0 +1,14 @@
+{
+  "ts": 209,
+  "rust": 209,
+  "manquants_rust": [],
+  "en_trop_rust": [],
+  "ecarts": 0,
+  "details": {
+    "description": 0,
+    "annotations": 0,
+    "champs d'entrée": 0,
+    "champs requis": 0,
+    "titre": 0
+  }
+}
