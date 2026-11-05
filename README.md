@@ -10,6 +10,12 @@ Serveur [MCP](https://modelcontextprotocol.io) pour les pare-feu [OPNsense](http
 
 > **État du projet.** Les tests tournent contre un faux serveur écrit d'après le code PHP d'OPNsense, pas contre un vrai pare-feu. Commencez avec une clé API en lecture seule, et gardez un accès console lors des premières écritures.
 
+> ### Cette branche ajoute une version Rust (`rust/`) : mêmes 209 outils, un seul binaire
+>
+> ![Banc TypeScript contre Rust](bench/chart.svg)
+>
+> Les chiffres ci-dessus se mettent à jour tout seuls : le workflow `perf-bench` récupère chaque jour le code de Yuto, teste le TypeScript et le Rust, vérifie que les 209 outils restent identiques, puis redessine le graphe. [Détails et résultats](#version-rust-rust).
+
 ## Installation
 
 Il faut Node.js 20.10 ou plus récent.
