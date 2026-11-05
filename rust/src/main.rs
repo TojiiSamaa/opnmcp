@@ -1,3 +1,4 @@
+#![allow(clippy::result_large_err)] // voir lib.rs
 use osmcp::config::{load_config, process_env};
 use osmcp::error::{ErrorType, OpnError};
 use osmcp::http::{self, HttpOptions};
@@ -29,7 +30,13 @@ struct Cli {
 }
 
 fn parse_cli() -> Result<Cli, OpnError> {
-    let mut cli = Cli { http: false, host: "127.0.0.1".into(), port: "8765".into(), list_tools: false, help: false };
+    let mut cli = Cli {
+        http: false,
+        host: "127.0.0.1".into(),
+        port: "8765".into(),
+        list_tools: false,
+        help: false,
+    };
     let mut it = std::env::args().skip(1);
     let bad = |m: String| OpnError::new(ErrorType::ConfigError, m);
     while let Some(a) = it.next() {
@@ -37,7 +44,12 @@ fn parse_cli() -> Result<Cli, OpnError> {
             Some((f, v)) if f.starts_with("--") => (f.to_string(), Some(v.to_string())),
             _ => (a.clone(), None),
         };
-        let mut value = |name: &str| inline.clone().or_else(|| it.next()).ok_or_else(|| bad(format!("{name} needs a value.")));
+        let mut value = |name: &str| {
+            inline
+                .clone()
+                .or_else(|| it.next())
+                .ok_or_else(|| bad(format!("{name} needs a value.")))
+        };
         match flag.as_str() {
             "--http" => cli.http = true,
             "--list-tools" => cli.list_tools = true,
@@ -83,10 +95,31 @@ async fn run() -> Result<(), OpnError> {
     }
 
     if cli.http {
-        let port: u16 = cli.port.parse().ok().filter(|p| *p >= 1).ok_or_else(|| OpnError::new(ErrorType::ConfigError, format!("--port: \"{}\" is not a valid port.", cli.port)))?;
-        let token = std::env::var("OPNSENSE_MCP_TOKEN").ok().filter(|t| !t.is_empty());
-        let allowed_hosts = std::env::var("OPNSENSE_MCP_ALLOWED_HOSTS").unwrap_or_default().split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-        return http::serve(registry, HttpOptions { host: cli.host, port, token, allowed_hosts }).await;
+        let port: u16 = cli.port.parse().ok().filter(|p| *p >= 1).ok_or_else(|| {
+            OpnError::new(
+                ErrorType::ConfigError,
+                format!("--port: \"{}\" is not a valid port.", cli.port),
+            )
+        })?;
+        let token = std::env::var("OPNSENSE_MCP_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty());
+        let allowed_hosts = std::env::var("OPNSENSE_MCP_ALLOWED_HOSTS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        return http::serve(
+            registry,
+            HttpOptions {
+                host: cli.host,
+                port,
+                token,
+                allowed_hosts,
+            },
+        )
+        .await;
     }
 
     serve_stdio(registry).await;
@@ -150,7 +183,14 @@ async fn wait_for_signal() {
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
-        eprintln!("[osmcp] {}{}", err.message, err.hint.as_ref().map(|h| format!("\n        {h}")).unwrap_or_default());
+        eprintln!(
+            "[osmcp] {}{}",
+            err.message,
+            err.hint
+                .as_ref()
+                .map(|h| format!("\n        {h}"))
+                .unwrap_or_default()
+        );
         std::process::exit(1);
     }
 }

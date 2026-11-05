@@ -9,9 +9,15 @@ use serde_json::{json, Value};
 
 const RESOURCES: &[(&str, &str)] = &[
     ("status", "System status reported by the firewall"),
-    ("interfaces", "Interfaces, with the ids, devices and names they map to"),
+    (
+        "interfaces",
+        "Interfaces, with the ids, devices and names they map to",
+    ),
     ("aliases", "Firewall aliases as configured"),
-    ("rules", "Firewall rules in evaluation order, without automatic rules"),
+    (
+        "rules",
+        "Firewall rules in evaluation order, without automatic rules",
+    ),
 ];
 
 pub fn list(runtime: &Runtime) -> Value {
@@ -31,22 +37,51 @@ pub fn list(runtime: &Runtime) -> Value {
 }
 
 pub async fn read(runtime: &Runtime, uri: &str) -> Result<Value> {
-    let bad = || OpnError::new(ErrorType::InvalidInput, format!("Unknown resource \"{uri}\"."));
+    let bad = || {
+        OpnError::new(
+            ErrorType::InvalidInput,
+            format!("Unknown resource \"{uri}\"."),
+        )
+    };
     let rest = uri.strip_prefix("opnsense://").ok_or_else(bad)?;
     let (instance, name) = rest.split_once('/').ok_or_else(bad)?;
-    let rt = runtime.instances().find(|i| i.config.name == instance).ok_or_else(bad)?;
+    let rt = runtime
+        .instances()
+        .find(|i| i.config.name == instance)
+        .ok_or_else(bad)?;
     let client = &*rt.client;
     let data = match name {
-        "status" => client.get("core/system/status", RequestOptions::new()).await?,
-        "interfaces" => Value::Array(fetch_all(client, "interfaces/overview/interfaces_info", None, FETCH_ALL_MAX).await?),
-        "aliases" => Value::Array(fetch_all(client, "firewall/alias/search_item", None, FETCH_ALL_MAX).await?),
+        "status" => {
+            client
+                .get("core/system/status", RequestOptions::new())
+                .await?
+        }
+        "interfaces" => Value::Array(
+            fetch_all(
+                client,
+                "interfaces/overview/interfaces_info",
+                None,
+                FETCH_ALL_MAX,
+            )
+            .await?,
+        ),
+        "aliases" => Value::Array(
+            fetch_all(client, "firewall/alias/search_item", None, FETCH_ALL_MAX).await?,
+        ),
         "rules" => {
-            let rows = fetch_all(client, "firewall/filter/search_rule", None, FETCH_ALL_MAX).await?;
-            Value::Array(rows.into_iter().filter(|r| !is_truthy(r.get("is_automatic"))).collect())
+            let rows =
+                fetch_all(client, "firewall/filter/search_rule", None, FETCH_ALL_MAX).await?;
+            Value::Array(
+                rows.into_iter()
+                    .filter(|r| !is_truthy(r.get("is_automatic")))
+                    .collect(),
+            )
         }
         _ => return Err(bad()),
     };
-    Ok(json!({ "contents": [{ "uri": uri, "mimeType": "application/json", "text": data.to_string() }] }))
+    Ok(
+        json!({ "contents": [{ "uri": uri, "mimeType": "application/json", "text": data.to_string() }] }),
+    )
 }
 
 fn is_truthy(v: Option<&Value>) -> bool {

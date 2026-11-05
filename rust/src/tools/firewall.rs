@@ -1,13 +1,22 @@
 //! Outils du domaine firewall : règles, flux de changement (aperçu, application, confirmation, retour arrière),
 //! analyse, catégories, alias, journal et table d'états pf.
 
-use super::simulate::{check_lockout, interface_for_address, load_alias_membership, load_ruleset, match_literal, simulate, Packet, Rule, SIMULATION_LIMITS};
+use super::simulate::{
+    check_lockout, interface_for_address, load_alias_membership, load_ruleset, match_literal,
+    simulate, Packet, Rule, SIMULATION_LIMITS,
+};
 use crate::changes::{ChangeScope, Protection};
 use crate::client::RequestOptions;
 use crate::error::{ErrorType, OpnError, Result};
-use crate::model::{compact_grid, compact_row, fetch_all, flatten_model, model_fields, paginate_array, search_grid, Obj, FETCH_ALL_MAX};
+use crate::model::{
+    compact_grid, compact_row, fetch_all, flatten_model, model_fields, paginate_array, search_grid,
+    Obj, FETCH_ALL_MAX,
+};
 use crate::schema::{self, Field, Ty};
-use crate::tool::{crud_tools, paging, read_tool, service_write, sparse, staged_write, tool, uuid, Args, Commands, CrudSpec, Ctx, Domain, ToolAccess, ToolDef};
+use crate::tool::{
+    crud_tools, paging, read_tool, service_write, sparse, staged_write, tool, uuid, Args, Commands,
+    CrudSpec, Ctx, Domain, ToolAccess, ToolDef,
+};
 use serde_json::{json, Map, Value};
 use std::net::IpAddr;
 use std::sync::{Arc, LazyLock};
@@ -64,7 +73,14 @@ fn alias_model(args: &Obj) -> Obj {
     let mut out = model_fields(&rest);
     // Les entrées d'un alias sont séparées par des retours à la ligne dans le modèle.
     if let Some(Value::Array(a)) = content {
-        out.insert("content".into(), json!(a.iter().map(|x| x.as_str().map_or_else(|| x.to_string(), String::from)).collect::<Vec<_>>().join("\n")));
+        out.insert(
+            "content".into(),
+            json!(a
+                .iter()
+                .map(|x| x.as_str().map_or_else(|| x.to_string(), String::from))
+                .collect::<Vec<_>>()
+                .join("\n")),
+        );
     }
     out
 }
@@ -117,10 +133,30 @@ fn rule_counts(rows: &[Rule]) -> Value {
 }
 
 fn objects(rows: Vec<Value>) -> Vec<Rule> {
-    rows.into_iter().filter_map(|r| if let Value::Object(o) = r { Some(o) } else { None }).collect()
+    rows.into_iter()
+        .filter_map(|r| {
+            if let Value::Object(o) = r {
+                Some(o)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
-const INSECURE_PORTS: &[(&str, &str)] = &[("21", "FTP"), ("23", "Telnet"), ("69", "TFTP"), ("135", "RPC"), ("139", "NetBIOS"), ("445", "SMB"), ("1433", "MSSQL"), ("3306", "MySQL"), ("3389", "RDP"), ("5432", "PostgreSQL"), ("5900", "VNC")];
+const INSECURE_PORTS: &[(&str, &str)] = &[
+    ("21", "FTP"),
+    ("23", "Telnet"),
+    ("69", "TFTP"),
+    ("135", "RPC"),
+    ("139", "NetBIOS"),
+    ("445", "SMB"),
+    ("1433", "MSSQL"),
+    ("3306", "MySQL"),
+    ("3389", "RDP"),
+    ("5432", "PostgreSQL"),
+    ("5900", "VNC"),
+];
 
 /// Vrai quand la règle `a` correspond à au moins tout ce que `b` attrape, sur les champs comparés.
 fn covers(a: &Rule, b: &Rule) -> bool {
@@ -131,11 +167,17 @@ fn covers(a: &Rule, b: &Rule) -> bool {
     };
     let dir = |r: &Rule| {
         let d = s(r.get("direction"));
-        if d.is_empty() { "in".to_string() } else { d }
+        if d.is_empty() {
+            "in".to_string()
+        } else {
+            d
+        }
     };
     s(a.get("interface")) == s(b.get("interface"))
         && dir(a) == dir(b)
-        && (is_any(a.get("ipprotocol")) || a.get("ipprotocol").and_then(Value::as_str) == Some("inet46") || s(a.get("ipprotocol")) == s(b.get("ipprotocol")))
+        && (is_any(a.get("ipprotocol"))
+            || a.get("ipprotocol").and_then(Value::as_str) == Some("inet46")
+            || s(a.get("ipprotocol")) == s(b.get("ipprotocol")))
         && same_or_any("protocol", "protocol")
         && same_or_any("source_net", "source_net")
         && !is_on(a.get("source_not"), false)
@@ -157,14 +199,19 @@ fn num(v: Option<&Value>, default: f64) -> f64 {
         Some(Value::Number(n)) => n.as_f64().unwrap_or(f64::NAN),
         Some(Value::String(x)) => {
             let t = x.trim();
-            if t.is_empty() { 0.0 } else { t.parse().unwrap_or(f64::NAN) }
+            if t.is_empty() {
+                0.0
+            } else {
+                t.parse().unwrap_or(f64::NAN)
+            }
         }
         Some(Value::Bool(b)) => f64::from(u8::from(*b)),
         Some(_) => f64::NAN,
     }
 }
 
-static WAN_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?i)(^|,)wan").unwrap());
+static WAN_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"(?i)(^|,)wan").unwrap());
 
 /// Revue du jeu de règles. Utilisée aussi par le domaine security.
 pub fn analyze_rules(rows: &[Rule], stats: Option<&Obj>) -> Value {
@@ -191,28 +238,65 @@ pub fn analyze_rules(rows: &[Rule], stats: Option<&Obj>) -> Value {
         findings.push((rank, Value::Object(f)));
     };
 
-    let user: Vec<&Rule> = rows.iter().filter(|r| !truthy(r.get("is_automatic"))).collect();
-    let active: Vec<&Rule> = user.iter().copied().filter(|r| is_on(r.get("enabled"), true)).collect();
+    let user: Vec<&Rule> = rows
+        .iter()
+        .filter(|r| !truthy(r.get("is_automatic")))
+        .collect();
+    let active: Vec<&Rule> = user
+        .iter()
+        .copied()
+        .filter(|r| is_on(r.get("enabled"), true))
+        .collect();
 
     for rule in &active {
         if s(rule.get("action")).to_lowercase() != "pass" {
             continue;
         }
         let any_source = is_any(rule.get("source_net")) && !is_on(rule.get("source_not"), false);
-        let any_destination = is_any(rule.get("destination_net")) && !is_on(rule.get("destination_not"), false);
+        let any_destination =
+            is_any(rule.get("destination_net")) && !is_on(rule.get("destination_not"), false);
         let on_wan = WAN_RE.is_match(&s(rule.get("interface")));
         let dport = s(rule.get("destination_port"));
         if any_source && any_destination && is_any(rule.get("destination_port")) {
-            add(if on_wan { "high" } else { "medium" }, "pass_any_any", format!("Passes all traffic{}: no restriction on source, destination or port.", if on_wan { " from the internet" } else { "" }), Some(rule));
+            add(
+                if on_wan { "high" } else { "medium" },
+                "pass_any_any",
+                format!(
+                    "Passes all traffic{}: no restriction on source, destination or port.",
+                    if on_wan { " from the internet" } else { "" }
+                ),
+                Some(rule),
+            );
         } else if on_wan && any_source {
             let dn = s(rule.get("destination_net"));
-            add("medium", "wan_open_to_any", format!("Passes traffic from any source on a WAN interface, to {} port {}.", if dn.is_empty() { "any" } else { &dn }, if dport.is_empty() { "any" } else { &dport }), Some(rule));
+            add(
+                "medium",
+                "wan_open_to_any",
+                format!(
+                    "Passes traffic from any source on a WAN interface, to {} port {}.",
+                    if dn.is_empty() { "any" } else { &dn },
+                    if dport.is_empty() { "any" } else { &dport }
+                ),
+                Some(rule),
+            );
         }
-        if let (Some((_, name)), true) = (INSECURE_PORTS.iter().find(|(p, _)| *p == dport), any_source) {
-            add(if on_wan { "high" } else { "low" }, "insecure_port", format!("Exposes {name} (port {dport}) to any source."), Some(rule));
+        if let (Some((_, name)), true) =
+            (INSECURE_PORTS.iter().find(|(p, _)| *p == dport), any_source)
+        {
+            add(
+                if on_wan { "high" } else { "low" },
+                "insecure_port",
+                format!("Exposes {name} (port {dport}) to any source."),
+                Some(rule),
+            );
         }
         if on_wan && !is_on(rule.get("log"), false) {
-            add("low", "wan_rule_not_logged", "WAN pass rule without logging: traffic through it leaves no trace.".into(), Some(rule));
+            add(
+                "low",
+                "wan_rule_not_logged",
+                "WAN pass rule without logging: traffic through it leaves no trace.".into(),
+                Some(rule),
+            );
         }
     }
 
@@ -224,11 +308,29 @@ pub fn analyze_rules(rows: &[Rule], stats: Option<&Obj>) -> Value {
         for b in &active[i + 1..] {
             if covers(a, b) {
                 let same = s(a.get("action")) == s(b.get("action"));
-                let name = { let d = s(a.get("description")); if d.is_empty() { s(a.get("uuid")) } else { d } };
+                let name = {
+                    let d = s(a.get("description"));
+                    if d.is_empty() {
+                        s(a.get("uuid"))
+                    } else {
+                        d
+                    }
+                };
                 add(
                     if same { "low" } else { "medium" },
-                    if same { "redundant_rule" } else { "shadowed_rule" },
-                    format!("Never reached: \"{name}\" decides this traffic first{}.", if same { " with the same action".to_string() } else { format!(" with action {}", s(a.get("action"))) }),
+                    if same {
+                        "redundant_rule"
+                    } else {
+                        "shadowed_rule"
+                    },
+                    format!(
+                        "Never reached: \"{name}\" decides this traffic first{}.",
+                        if same {
+                            " with the same action".to_string()
+                        } else {
+                            format!(" with action {}", s(a.get("action")))
+                        }
+                    ),
                     Some(b),
                 );
             }
@@ -237,13 +339,21 @@ pub fn analyze_rules(rows: &[Rule], stats: Option<&Obj>) -> Value {
 
     let disabled = user.len() - active.len();
     if disabled > 0 {
-        add("info", "disabled_rules", format!("{disabled} disabled rule(s) still in the configuration."), None);
+        add(
+            "info",
+            "disabled_rules",
+            format!("{disabled} disabled rule(s) still in the configuration."),
+            None,
+        );
     }
 
     if let Some(stats) = stats {
         for rule in &active {
             if let Some(Value::Object(st)) = stats.get(&s(rule.get("uuid"))) {
-                if num(st.get("evaluations"), 1.0) > 0.0 && num(st.get("packets"), 1.0) == 0.0 && num(st.get("bytes"), 1.0) == 0.0 {
+                if num(st.get("evaluations"), 1.0) > 0.0
+                    && num(st.get("packets"), 1.0) == 0.0
+                    && num(st.get("bytes"), 1.0) == 0.0
+                {
                     add("info", "no_recent_hits", "No packet since the last ruleset reload. Counters reset on every reload, so this alone does not make the rule useless.".into(), Some(rule));
                 }
             }
@@ -256,13 +366,31 @@ pub fn analyze_rules(rows: &[Rule], stats: Option<&Obj>) -> Value {
 
 fn log_filters() -> Vec<Field> {
     vec![
-        schema::string("source_ip").opt().desc("Exact address or CIDR."),
-        schema::string("destination_ip").opt().desc("Exact address or CIDR."),
-        schema::integer("port").opt().min(0).max(65535).desc("Source or destination port."),
-        schema::enumeration("action", &["pass", "block", "rdr", "nat", "binat", "match"]).opt().desc("Action taken."),
-        schema::string("interface").opt().desc("Interface name or device, case-insensitive."),
-        schema::string("rule_id").opt().desc("Rule uuid or label (rid), to see what one rule logged."),
-        schema::integer("scan_limit").opt().min(1).max(20000).desc("Newest log lines to scan before filtering (default 1000)."),
+        schema::string("source_ip")
+            .opt()
+            .desc("Exact address or CIDR."),
+        schema::string("destination_ip")
+            .opt()
+            .desc("Exact address or CIDR."),
+        schema::integer("port")
+            .opt()
+            .min(0)
+            .max(65535)
+            .desc("Source or destination port."),
+        schema::enumeration("action", &["pass", "block", "rdr", "nat", "binat", "match"])
+            .opt()
+            .desc("Action taken."),
+        schema::string("interface")
+            .opt()
+            .desc("Interface name or device, case-insensitive."),
+        schema::string("rule_id")
+            .opt()
+            .desc("Rule uuid or label (rid), to see what one rule logged."),
+        schema::integer("scan_limit")
+            .opt()
+            .min(1)
+            .max(20000)
+            .desc("Newest log lines to scan before filtering (default 1000)."),
     ]
 }
 
@@ -283,7 +411,12 @@ fn strip_mapped(v: &str) -> String {
 }
 
 fn non_empty(items: impl IntoIterator<Item = Option<String>>) -> Vec<String> {
-    items.into_iter().flatten().filter(|v| !v.is_empty()).map(|v| strip_mapped(&v)).collect()
+    items
+        .into_iter()
+        .flatten()
+        .filter(|v| !v.is_empty())
+        .map(|v| strip_mapped(&v))
+        .collect()
 }
 
 async fn find_states(ctx: &Ctx, address: Option<&str>, label: Option<&str>) -> Result<Vec<Obj>> {
@@ -294,8 +427,22 @@ async fn find_states(ctx: &Ctx, address: Option<&str>, label: Option<&str>) -> R
     if let Some(l) = label {
         extra.insert("ruleid".into(), json!(l));
     }
-    let rows = objects(fetch_all(&ctx.api, "diagnostics/firewall/query_states", Some(extra), FETCH_ALL_MAX).await?);
-    Ok(rows.into_iter().filter(|r| address.map_or(true, |a| state_involves(r, a)) && label.map_or(true, |l| s(r.get("label")).to_lowercase() == l)).collect())
+    let rows = objects(
+        fetch_all(
+            &ctx.api,
+            "diagnostics/firewall/query_states",
+            Some(extra),
+            FETCH_ALL_MAX,
+        )
+        .await?,
+    );
+    Ok(rows
+        .into_iter()
+        .filter(|r| {
+            address.map_or(true, |a| state_involves(r, a))
+                && label.map_or(true, |l| s(r.get("label")).to_lowercase() == l)
+        })
+        .collect())
 }
 
 fn merge(base: Value, extra: Value) -> Value {
@@ -311,12 +458,25 @@ fn merge(base: Value, extra: Value) -> Value {
 
 async fn learn_addresses(ctx: &Ctx) {
     // Apprend les adresses de cette connexion.
-    let _ = ctx.client.get("core/system/status", RequestOptions::new()).await;
+    let _ = ctx
+        .client
+        .get("core/system/status", RequestOptions::new())
+        .await;
 }
 
-fn staged_tool(name: &str, title: &str, description: &str, access: ToolAccess, input: Vec<Field>) -> crate::tool::ToolBuilder {
+fn staged_tool(
+    name: &str,
+    title: &str,
+    description: &str,
+    access: ToolAccess,
+    input: Vec<Field>,
+) -> crate::tool::ToolBuilder {
     let t = tool(name, title, description, FW, access).input(input);
-    if access == ToolAccess::Read { t.idempotent() } else { t }
+    if access == ToolAccess::Read {
+        t.idempotent()
+    } else {
+        t
+    }
 }
 
 pub fn tools() -> Vec<ToolDef> {
@@ -357,9 +517,26 @@ pub fn tools() -> Vec<ToolDef> {
         }),
     );
     defs.push(
-        read_tool("opn_get_firewall_rule", "Get firewall rule", "Get every field of one firewall rule, by uuid.", FW).input(vec![uuid()]).run(|args, ctx| async move {
-            let res = ctx.api.get("firewall/filter/get_rule", RequestOptions::new().param(args.req("uuid"))).await?;
-            let rule = res.get("rule").filter(|v| !v.is_null()).cloned().unwrap_or(res);
+        read_tool(
+            "opn_get_firewall_rule",
+            "Get firewall rule",
+            "Get every field of one firewall rule, by uuid.",
+            FW,
+        )
+        .input(vec![uuid()])
+        .run(|args, ctx| async move {
+            let res = ctx
+                .api
+                .get(
+                    "firewall/filter/get_rule",
+                    RequestOptions::new().param(args.req("uuid")),
+                )
+                .await?;
+            let rule = res
+                .get("rule")
+                .filter(|v| !v.is_null())
+                .cloned()
+                .unwrap_or(res);
             Ok(json!({ "uuid": args.req("uuid"), "rule": flatten_model(&rule) }))
         }),
     );
@@ -425,14 +602,39 @@ pub fn tools() -> Vec<ToolDef> {
         }),
     );
     defs.push(
-        tool("opn_delete_firewall_rule", "Delete firewall rule", "Delete a filter rule. Staged: nothing changes until opn_apply_firewall_changes.", FW, ToolAccess::Destructive)
-            .idempotent()
-            .input(vec![uuid()])
-            .confirm(|a| format!("Delete firewall rule {}? It stays active until the changes are applied.", a.req("uuid")))
-            .run(|args, ctx| async move {
-                let id = args.req("uuid");
-                staged_write(&ctx, ChangeScope::Filter, "delete", &format!("delete rule {id}"), || ctx.api.post("firewall/filter/del_rule", None, RequestOptions::new().param(id)), "Deleting the rule").await
-            }),
+        tool(
+            "opn_delete_firewall_rule",
+            "Delete firewall rule",
+            "Delete a filter rule. Staged: nothing changes until opn_apply_firewall_changes.",
+            FW,
+            ToolAccess::Destructive,
+        )
+        .idempotent()
+        .input(vec![uuid()])
+        .confirm(|a| {
+            format!(
+                "Delete firewall rule {}? It stays active until the changes are applied.",
+                a.req("uuid")
+            )
+        })
+        .run(|args, ctx| async move {
+            let id = args.req("uuid");
+            staged_write(
+                &ctx,
+                ChangeScope::Filter,
+                "delete",
+                &format!("delete rule {id}"),
+                || {
+                    ctx.api.post(
+                        "firewall/filter/del_rule",
+                        None,
+                        RequestOptions::new().param(id),
+                    )
+                },
+                "Deleting the rule",
+            )
+            .await
+        }),
     );
     defs.push(
         staged_tool(
@@ -654,10 +856,30 @@ pub fn tools() -> Vec<ToolDef> {
     );
 
     // ---- Catégories ----
-    let mut cat = CrudSpec::new(FW, "firewall_category", "firewall_categories", "firewall category", "firewall/category", "category", Commands { search: "search_item", get: "get_item", add: Some("add_item"), set: Some("set_item"), del: Some("del_item"), toggle: None });
+    let mut cat = CrudSpec::new(
+        FW,
+        "firewall_category",
+        "firewall_categories",
+        "firewall category",
+        "firewall/category",
+        "category",
+        Commands {
+            search: "search_item",
+            get: "get_item",
+            add: Some("add_item"),
+            set: Some("set_item"),
+            del: Some("del_item"),
+            toggle: None,
+        },
+    );
     cat.fields = vec![
-        schema::string("name").opt().desc("Category name. Renaming a category also updates the rules that use it."),
-        schema::string("color").regex(r"^[0-9a-fA-F]{6}$", "Six hex digits").opt().desc("Color as six hex digits."),
+        schema::string("name")
+            .opt()
+            .desc("Category name. Renaming a category also updates the rules that use it."),
+        schema::string("color")
+            .regex(r"^[0-9a-fA-F]{6}$", "Six hex digits")
+            .opt()
+            .desc("Color as six hex digits."),
     ];
     cat.required = vec!["name"];
     // Sans nom dans la mise à jour, le contrôleur renommerait la catégorie en rien dans chaque règle.
@@ -666,7 +888,22 @@ pub fn tools() -> Vec<ToolDef> {
     defs.extend(crud_tools(cat));
 
     // ---- Alias ----
-    let mut alias = CrudSpec::new(FW, "alias", "firewall_aliases", "firewall alias", "firewall/alias", "alias", Commands { search: "search_item", get: "get_item", add: Some("add_item"), set: Some("set_item"), del: Some("del_item"), toggle: Some("toggle_item") });
+    let mut alias = CrudSpec::new(
+        FW,
+        "alias",
+        "firewall_aliases",
+        "firewall alias",
+        "firewall/alias",
+        "alias",
+        Commands {
+            search: "search_item",
+            get: "get_item",
+            add: Some("add_item"),
+            set: Some("set_item"),
+            del: Some("del_item"),
+            toggle: Some("toggle_item"),
+        },
+    );
     alias.fields = alias_fields();
     alias.required = vec!["name", "type"];
     alias.to_model = Some(Arc::new(alias_model));
@@ -675,8 +912,16 @@ pub fn tools() -> Vec<ToolDef> {
     alias.write_note = Some("Staged: goes live with opn_apply_firewall_changes.");
     defs.extend(crud_tools(alias));
 
-    let alias_name = || schema::string("name").regex(r"^[A-Za-z0-9_.-]+$", "Invalid").desc("Alias name.");
-    let alias_address = || schema::string("address").regex(r"^[0-9a-fA-F:./]+$", "Expected an address or CIDR").desc("Address or CIDR.");
+    let alias_name = || {
+        schema::string("name")
+            .regex(r"^[A-Za-z0-9_.-]+$", "Invalid")
+            .desc("Alias name.")
+    };
+    let alias_address = || {
+        schema::string("address")
+            .regex(r"^[0-9a-fA-F:./]+$", "Expected an address or CIDR")
+            .desc("Address or CIDR.")
+    };
     defs.push(
         read_tool(
             "opn_get_alias_contents",
@@ -836,15 +1081,28 @@ pub fn tools() -> Vec<ToolDef> {
             .run(|args, ctx| async move { Ok(compact_grid(&search_grid(&ctx.api, "diagnostics/firewall/query_pf_top", &args.grid()).await?)) }),
     );
     defs.push(
-        read_tool("opn_pf_statistics", "pf statistics", "pf engine statistics and how full the state table is.", FW)
-            .input(vec![schema::enumeration("section", &["info", "memory", "timeouts", "rules", "interfaces"]).opt().desc("Only this section. Default: info.")])
-            .run(|args, ctx| async move {
-                let (statistics, states) = futures::join!(
-                    ctx.api.get("diagnostics/firewall/pf_statistics", RequestOptions::new().param(args.str("section").unwrap_or("info"))),
-                    ctx.api.get_("diagnostics/firewall/pf_states"),
-                );
-                Ok(json!({ "statistics": statistics?, "states": states.unwrap_or(Value::Null) }))
-            }),
+        read_tool(
+            "opn_pf_statistics",
+            "pf statistics",
+            "pf engine statistics and how full the state table is.",
+            FW,
+        )
+        .input(vec![schema::enumeration(
+            "section",
+            &["info", "memory", "timeouts", "rules", "interfaces"],
+        )
+        .opt()
+        .desc("Only this section. Default: info.")])
+        .run(|args, ctx| async move {
+            let (statistics, states) = futures::join!(
+                ctx.api.get(
+                    "diagnostics/firewall/pf_statistics",
+                    RequestOptions::new().param(args.str("section").unwrap_or("info"))
+                ),
+                ctx.api.get_("diagnostics/firewall/pf_states"),
+            );
+            Ok(json!({ "statistics": statistics?, "states": states.unwrap_or(Value::Null) }))
+        }),
     );
     defs.push(
         tool(
@@ -880,25 +1138,55 @@ pub fn tools() -> Vec<ToolDef> {
 
 async fn kill_states(args: Args, ctx: Arc<Ctx>) -> Result<Value> {
     let address = args.str("address").filter(|a| !a.is_empty());
-    let label = args.str("rule_id").filter(|l| !l.is_empty()).map(str::to_lowercase);
+    let label = args
+        .str("rule_id")
+        .filter(|l| !l.is_empty())
+        .map(str::to_lowercase);
     if address.is_none() && label.is_none() {
-        return Err(OpnError::new(ErrorType::InvalidInput, "Give an address or a rule_id: killing every state is not allowed."));
+        return Err(OpnError::new(
+            ErrorType::InvalidInput,
+            "Give an address or a rule_id: killing every state is not allowed.",
+        ));
     }
     let include_management = args.bool("include_management") == Some(true);
     if let Some(address) = address {
         let mut parts = address.split('/');
         let base = parts.next().unwrap_or("");
         let bits = parts.next();
-        if !is_ip(base) || bits.is_some_and(|b| b.is_empty() || b.len() > 3 || !b.bytes().all(|c| c.is_ascii_digit())) {
-            return Err(OpnError::new(ErrorType::InvalidInput, format!("\"{address}\" is not an IP address or CIDR.")));
+        if !is_ip(base)
+            || bits.is_some_and(|b| {
+                b.is_empty() || b.len() > 3 || !b.bytes().all(|c| c.is_ascii_digit())
+            })
+        {
+            return Err(OpnError::new(
+                ErrorType::InvalidInput,
+                format!("\"{address}\" is not an IP address or CIDR."),
+            ));
         }
         if bits.is_some_and(|b| b.parse::<u32>() == Ok(0)) {
-            return Err(OpnError::new(ErrorType::InvalidInput, "A /0 would match every connection: killing every state is not allowed."));
+            return Err(OpnError::new(
+                ErrorType::InvalidInput,
+                "A /0 would match every connection: killing every state is not allowed.",
+            ));
         }
         learn_addresses(&ctx).await;
-        let own = non_empty([ctx.client.config.management_source.clone(), ctx.client.local_address(), ctx.client.remote_address()]);
-        if !include_management && own.iter().any(|ip| match_literal(address, ip) == Some(true)) {
-            return Err(OpnError::new(ErrorType::LockoutRisk, format!("{address} also matches the connection between this server and the firewall.")).hint("Narrow the address, or set include_management if that is intended."));
+        let own = non_empty([
+            ctx.client.config.management_source.clone(),
+            ctx.client.local_address(),
+            ctx.client.remote_address(),
+        ]);
+        if !include_management
+            && own
+                .iter()
+                .any(|ip| match_literal(address, ip) == Some(true))
+        {
+            return Err(OpnError::new(
+                ErrorType::LockoutRisk,
+                format!(
+                    "{address} also matches the connection between this server and the firewall."
+                ),
+            )
+            .hint("Narrow the address, or set include_management if that is intended."));
         }
     }
     // Pas kill_states : il retire « / » et « : » de son filtre, donc 10.0.0.1/24 deviendrait 10.0.0.124, un autre hôte.
@@ -906,16 +1194,33 @@ async fn kill_states(args: Args, ctx: Arc<Ctx>) -> Result<Value> {
     let matching = find_states(&ctx, address, label.as_deref()).await?;
 
     let firewall = non_empty([ctx.client.remote_address()]).into_iter().next();
-    let sources = non_empty([ctx.client.config.management_source.clone(), ctx.client.local_address()]);
-    let is_own = |r: &Obj| sources.iter().any(|ip| state_involves(r, ip)) && firewall.as_deref().map_or(true, |f| state_involves(r, f));
-    let targets: Vec<&Obj> = matching.iter().filter(|r| include_management || !is_own(r)).collect();
+    let sources = non_empty([
+        ctx.client.config.management_source.clone(),
+        ctx.client.local_address(),
+    ]);
+    let is_own = |r: &Obj| {
+        sources.iter().any(|ip| state_involves(r, ip))
+            && firewall.as_deref().map_or(true, |f| state_involves(r, f))
+    };
+    let targets: Vec<&Obj> = matching
+        .iter()
+        .filter(|r| include_management || !is_own(r))
+        .collect();
 
     let max = args.i64("max_states").unwrap_or(500) as usize;
     if targets.len() > max {
-        return Err(OpnError::new(ErrorType::InvalidInput, format!("{} states match, more than the limit of {max}: nothing was killed.", targets.len())).hint("Narrow the address, or raise max_states if that is intended."));
+        return Err(OpnError::new(
+            ErrorType::InvalidInput,
+            format!(
+                "{} states match, more than the limit of {max}: nothing was killed.",
+                targets.len()
+            ),
+        )
+        .hint("Narrow the address, or raise max_states if that is intended."));
     }
 
-    static ID_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"^([0-9a-fA-F]+)/([0-9a-fA-F]+)$").unwrap());
+    static ID_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"^([0-9a-fA-F]+)/([0-9a-fA-F]+)$").unwrap());
     let (mut sent, mut unidentified) = (0usize, 0usize);
     let mut stopped_on: Option<String> = None;
     for r in &targets {
@@ -924,7 +1229,15 @@ async fn kill_states(args: Args, ctx: Arc<Ctx>) -> Result<Value> {
             unidentified += 1;
             continue;
         };
-        match ctx.api.post("diagnostics/firewall/del_state", None, RequestOptions::new().param(&caps[1]).param(&caps[2])).await {
+        match ctx
+            .api
+            .post(
+                "diagnostics/firewall/del_state",
+                None,
+                RequestOptions::new().param(&caps[1]).param(&caps[2]),
+            )
+            .await
+        {
             Ok(_) => sent += 1,
             Err(e) => {
                 // Un état déjà disparu n'est pas une erreur ici, donc celle-ci ne s'arrangera pas.
@@ -936,12 +1249,19 @@ async fn kill_states(args: Args, ctx: Arc<Ctx>) -> Result<Value> {
             }
         }
     }
-    let after = if ctx.dry_run || sent == 0 { None } else { find_states(&ctx, address, label.as_deref()).await.ok() };
+    let after = if ctx.dry_run || sent == 0 {
+        None
+    } else {
+        find_states(&ctx, address, label.as_deref()).await.ok()
+    };
     let mut out = Map::new();
     out.insert("matched".into(), json!(matching.len()));
     out.insert("kill_requests_sent".into(), json!(sent));
     if matching.len() > targets.len() {
-        out.insert("skipped_management".into(), json!(matching.len() - targets.len()));
+        out.insert(
+            "skipped_management".into(),
+            json!(matching.len() - targets.len()),
+        );
     }
     if unidentified > 0 {
         out.insert("skipped_unidentified".into(), json!(unidentified));
@@ -950,9 +1270,16 @@ async fn kill_states(args: Args, ctx: Arc<Ctx>) -> Result<Value> {
         out.insert("stopped_on_error".into(), json!(e));
     }
     if let Some(after) = after {
-        let still = if include_management { after.len() } else { after.iter().filter(|r| !is_own(r)).count() };
+        let still = if include_management {
+            after.len()
+        } else {
+            after.iter().filter(|r| !is_own(r)).count()
+        };
         out.insert("still_matching".into(), json!(still));
-        out.insert("note".into(), json!("Clients can reconnect at once if the rules allow it, so new states can appear."));
+        out.insert(
+            "note".into(),
+            json!("Clients can reconnect at once if the rules allow it, so new states can appear."),
+        );
     }
     Ok(Value::Object(out))
 }
@@ -969,20 +1296,35 @@ mod tests {
     fn exposes_the_ts_tool_names() {
         let names: Vec<String> = tools().into_iter().map(|t| t.name).collect();
         assert_eq!(names.len(), 37, "{names:?}");
-        for n in ["opn_list_firewall_rules", "opn_list_firewall_categories", "opn_get_firewall_category", "opn_list_firewall_aliases", "opn_toggle_alias", "opn_kill_states", "opn_set_rule_categories"] {
+        for n in [
+            "opn_list_firewall_rules",
+            "opn_list_firewall_categories",
+            "opn_get_firewall_category",
+            "opn_list_firewall_aliases",
+            "opn_toggle_alias",
+            "opn_kill_states",
+            "opn_set_rule_categories",
+        ] {
             assert!(names.iter().any(|x| x == n), "manque {n}");
         }
     }
 
     #[test]
     fn rule_model_renames_ip_protocol() {
-        let m = rule_model(&rule(json!({ "ip_protocol": "inet", "log": true, "sequence": 5 })));
-        assert_eq!(Value::Object(m), json!({ "ipprotocol": "inet", "log": "1", "sequence": "5" }));
+        let m = rule_model(&rule(
+            json!({ "ip_protocol": "inet", "log": true, "sequence": 5 }),
+        ));
+        assert_eq!(
+            Value::Object(m),
+            json!({ "ipprotocol": "inet", "log": "1", "sequence": "5" })
+        );
     }
 
     #[test]
     fn alias_content_is_newline_separated() {
-        let m = alias_model(&rule(json!({ "name": "a", "content": ["1.1.1.1", "2.2.2.2"], "enabled": false })));
+        let m = alias_model(&rule(
+            json!({ "name": "a", "content": ["1.1.1.1", "2.2.2.2"], "enabled": false }),
+        ));
         assert_eq!(m["content"], "1.1.1.1\n2.2.2.2");
         assert_eq!(m["enabled"], "0");
     }
@@ -990,12 +1332,21 @@ mod tests {
     #[test]
     fn analysis_finds_wan_any_and_shadowing() {
         let rows = vec![
-            rule(json!({ "uuid": "a", "action": "pass", "interface": "wan", "enabled": "1", "quick": "1", "log": "1", "description": "open" })),
-            rule(json!({ "uuid": "b", "action": "block", "interface": "wan", "enabled": "1", "destination_port": "22", "source_net": "10.0.0.1" })),
+            rule(
+                json!({ "uuid": "a", "action": "pass", "interface": "wan", "enabled": "1", "quick": "1", "log": "1", "description": "open" }),
+            ),
+            rule(
+                json!({ "uuid": "b", "action": "block", "interface": "wan", "enabled": "1", "destination_port": "22", "source_net": "10.0.0.1" }),
+            ),
             rule(json!({ "uuid": "c", "action": "pass", "interface": "lan", "enabled": "0" })),
         ];
         let out = analyze_rules(&rows, None);
-        let checks: Vec<&str> = out["findings"].as_array().unwrap().iter().map(|f| f["check"].as_str().unwrap()).collect();
+        let checks: Vec<&str> = out["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["check"].as_str().unwrap())
+            .collect();
         assert_eq!(checks.first(), Some(&"pass_any_any"));
         assert!(checks.contains(&"shadowed_rule") && checks.contains(&"disabled_rules"));
         assert_eq!(out["active_user_rules"], 2);

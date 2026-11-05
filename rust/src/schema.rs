@@ -5,11 +5,21 @@ use serde_json::{json, Map, Value};
 use std::net::IpAddr;
 use std::sync::Arc;
 
+type Check = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
 #[derive(Clone)]
 pub enum Ty {
-    Str { regex: Option<(regex::Regex, String)>, check: Option<(Arc<dyn Fn(&str) -> bool + Send + Sync>, &'static str)> },
-    Int { min: Option<i64>, max: Option<i64> },
-    Num { min: Option<f64> },
+    Str {
+        regex: Option<(regex::Regex, String)>,
+        check: Option<(Check, &'static str)>,
+    },
+    Int {
+        min: Option<i64>,
+        max: Option<i64>,
+    },
+    Num {
+        min: Option<f64>,
+    },
     Bool,
     Enum(Vec<String>),
     Array(Box<Ty>),
@@ -28,7 +38,12 @@ pub struct Field {
 
 impl Field {
     fn new(name: &'static str, ty: Ty) -> Self {
-        Field { name, ty, desc: None, optional: false }
+        Field {
+            name,
+            ty,
+            desc: None,
+            optional: false,
+        }
     }
     pub fn desc(mut self, d: &str) -> Self {
         self.desc = Some(d.to_string());
@@ -58,11 +73,18 @@ impl Field {
     }
     pub fn regex(mut self, pattern: &str, message: &str) -> Self {
         if let Ty::Str { regex, .. } = &mut self.ty {
-            *regex = Some((regex::Regex::new(pattern).expect("regex d'outil invalide"), message.to_string()));
+            *regex = Some((
+                regex::Regex::new(pattern).expect("regex d'outil invalide"),
+                message.to_string(),
+            ));
         }
         self
     }
-    pub fn check(mut self, f: impl Fn(&str) -> bool + Send + Sync + 'static, message: &'static str) -> Self {
+    pub fn check(
+        mut self,
+        f: impl Fn(&str) -> bool + Send + Sync + 'static,
+        message: &'static str,
+    ) -> Self {
         if let Ty::Str { check, .. } = &mut self.ty {
             *check = Some((Arc::new(f), message));
         }
@@ -75,10 +97,22 @@ impl Field {
 }
 
 pub fn string(name: &'static str) -> Field {
-    Field::new(name, Ty::Str { regex: None, check: None })
+    Field::new(
+        name,
+        Ty::Str {
+            regex: None,
+            check: None,
+        },
+    )
 }
 pub fn integer(name: &'static str) -> Field {
-    Field::new(name, Ty::Int { min: None, max: None })
+    Field::new(
+        name,
+        Ty::Int {
+            min: None,
+            max: None,
+        },
+    )
 }
 pub fn number(name: &'static str) -> Field {
     Field::new(name, Ty::Num { min: None })
@@ -87,13 +121,22 @@ pub fn boolean(name: &'static str) -> Field {
     Field::new(name, Ty::Bool)
 }
 pub fn enumeration(name: &'static str, values: &[&str]) -> Field {
-    Field::new(name, Ty::Enum(values.iter().map(|v| v.to_string()).collect()))
+    Field::new(
+        name,
+        Ty::Enum(values.iter().map(|v| v.to_string()).collect()),
+    )
 }
 pub fn array_of(name: &'static str, item: Ty) -> Field {
     Field::new(name, Ty::Array(Box::new(item)))
 }
 pub fn strings(name: &'static str) -> Field {
-    array_of(name, Ty::Str { regex: None, check: None })
+    array_of(
+        name,
+        Ty::Str {
+            regex: None,
+            check: None,
+        },
+    )
 }
 pub fn record(name: &'static str, values: Vec<Ty>) -> Field {
     Field::new(name, Ty::Record(values))
@@ -102,7 +145,10 @@ pub fn unknown_record(name: &'static str) -> Field {
     Field::new(name, Ty::Record(vec![Ty::Unknown]))
 }
 pub fn plain_str() -> Ty {
-    Ty::Str { regex: None, check: None }
+    Ty::Str {
+        regex: None,
+        check: None,
+    }
 }
 
 /// Liste ordonnée de champs : l'ordre est celui annoncé dans le JSON Schema.
@@ -240,7 +286,10 @@ fn check_ty(ty: &Ty, v: &Value) -> Result<(), String> {
             Ok(())
         }
         Ty::Int { min, max } => {
-            let n = v.as_i64().or_else(|| v.as_f64().filter(|f| f.fract() == 0.0).map(|f| f as i64)).ok_or("expected an integer")?;
+            let n = v
+                .as_i64()
+                .or_else(|| v.as_f64().filter(|f| f.fract() == 0.0).map(|f| f as i64))
+                .ok_or("expected an integer")?;
             if min.is_some_and(|m| n < m) {
                 return Err(format!("must be at least {}", min.unwrap()));
             }
@@ -256,7 +305,10 @@ fn check_ty(ty: &Ty, v: &Value) -> Result<(), String> {
             }
             Ok(())
         }
-        Ty::Bool => v.is_boolean().then_some(()).ok_or_else(|| "expected a boolean".into()),
+        Ty::Bool => v
+            .is_boolean()
+            .then_some(())
+            .ok_or_else(|| "expected a boolean".into()),
         Ty::Enum(values) => {
             let s = v.as_str().ok_or("expected a string")?;
             if values.iter().any(|x| x == s) {
@@ -291,7 +343,12 @@ mod tests {
 
     #[test]
     fn validates_types_and_required() {
-        let s = Schema::new(vec![string("a").desc("x"), integer("n").opt().min(1).max(5), enumeration("e", &["x", "y"]).opt(), string("ip").ip().opt()]);
+        let s = Schema::new(vec![
+            string("a").desc("x"),
+            integer("n").opt().min(1).max(5),
+            enumeration("e", &["x", "y"]).opt(),
+            string("ip").ip().opt(),
+        ]);
         assert!(s.validate(&json!({"a": "v"})).is_ok());
         assert!(s.validate(&json!({})).is_err());
         assert!(s.validate(&json!({"a": "v", "n": 0})).is_err());
@@ -299,7 +356,11 @@ mod tests {
         assert!(s.validate(&json!({"a": "v", "e": "z"})).is_err());
         assert!(s.validate(&json!({"a": "v", "ip": "10.0.0.1"})).is_ok());
         assert!(s.validate(&json!({"a": "v", "ip": "nope"})).is_err());
-        assert!(s.validate(&json!({"a": "v", "extra": 1})).unwrap().get("extra").is_none());
+        assert!(s
+            .validate(&json!({"a": "v", "extra": 1}))
+            .unwrap()
+            .get("extra")
+            .is_none());
     }
 
     #[test]
@@ -313,8 +374,21 @@ mod tests {
 
     #[test]
     fn records_accept_mixed() {
-        let s = Schema::new(vec![record("q", vec![plain_str(), Ty::Int { min: None, max: None }, Ty::Bool]).opt()]);
-        assert!(s.validate(&json!({"q": {"a": "x", "b": 1, "c": true}})).is_ok());
+        let s = Schema::new(vec![record(
+            "q",
+            vec![
+                plain_str(),
+                Ty::Int {
+                    min: None,
+                    max: None,
+                },
+                Ty::Bool,
+            ],
+        )
+        .opt()]);
+        assert!(s
+            .validate(&json!({"q": {"a": "x", "b": 1, "c": true}}))
+            .is_ok());
         assert!(s.validate(&json!({"q": {"a": [1]}})).is_err());
     }
 }

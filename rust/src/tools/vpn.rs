@@ -5,12 +5,19 @@ use crate::client::RequestOptions;
 use crate::error::Result;
 use crate::model::{compact_grid, fetch_all, search_grid, Obj, FETCH_ALL_MAX};
 use crate::schema;
-use crate::tool::{crud_tools, flip_to, gather, paging, read_tool, service_write, tool, Commands, CrudSpec, Domain, ToolAccess, ToolDef};
+use crate::tool::{
+    crud_tools, flip_to, gather, paging, read_tool, service_write, tool, Commands, CrudSpec,
+    Domain, ToolAccess, ToolDef,
+};
 use serde_json::{json, Map, Value};
 
 /// Une ligne de phase 1 sans nom est ignorée : `String(row.name ?? '')`.
 fn phase1_names(rows: &[Value]) -> Vec<String> {
-    rows.iter().filter_map(|r| r.get("name").filter(|v| !v.is_null())).map(|v| js_str(Some(v))).filter(|n| !n.is_empty()).collect()
+    rows.iter()
+        .filter_map(|r| r.get("name").filter(|v| !v.is_null()))
+        .map(|v| js_str(Some(v)))
+        .filter(|n| !n.is_empty())
+        .collect()
 }
 
 pub fn tools() -> Vec<ToolDef> {
@@ -101,7 +108,11 @@ pub fn tools() -> Vec<ToolDef> {
         "OpenVPN instance",
         "openvpn/instances",
         "instance",
-        Commands { search: "search", get: "get", ..Default::default() },
+        Commands {
+            search: "search",
+            get: "get",
+            ..Default::default()
+        },
     );
     openvpn.list_note = Some("Legacy instances made on the old OpenVPN pages do not appear here: see opn_get_config_section with section openvpn.");
     defs.extend(crud_tools(openvpn));
@@ -120,20 +131,42 @@ mod tests {
         assert_eq!(
             names,
             [
-                "opn_wireguard_status", "opn_list_wireguard_servers", "opn_list_wireguard_peers", "opn_toggle_wireguard_peer", "opn_ipsec_status", "opn_list_ipsec_connections", "opn_openvpn_status",
-                "opn_list_openvpn_instances", "opn_get_openvpn_instance"
+                "opn_wireguard_status",
+                "opn_list_wireguard_servers",
+                "opn_list_wireguard_peers",
+                "opn_toggle_wireguard_peer",
+                "opn_ipsec_status",
+                "opn_list_ipsec_connections",
+                "opn_openvpn_status",
+                "opn_list_openvpn_instances",
+                "opn_get_openvpn_instance"
             ]
         );
         assert!(d.iter().all(|t| t.domain == Domain::Vpn));
-        let toggle = d.iter().find(|t| t.name == "opn_toggle_wireguard_peer").unwrap();
+        let toggle = d
+            .iter()
+            .find(|t| t.name == "opn_toggle_wireguard_peer")
+            .unwrap();
         assert_eq!(toggle.access, ToolAccess::Write);
-        assert!(toggle.input.validate(&json!({ "uuid": "not-a-uuid", "enabled": true })).is_err());
-        assert!(toggle.input.validate(&json!({ "uuid": "123e4567-e89b-12d3-a456-426614174000", "enabled": false })).is_ok());
+        assert!(toggle
+            .input
+            .validate(&json!({ "uuid": "not-a-uuid", "enabled": true }))
+            .is_err());
+        assert!(toggle
+            .input
+            .validate(&json!({ "uuid": "123e4567-e89b-12d3-a456-426614174000", "enabled": false }))
+            .is_ok());
     }
 
     #[test]
     fn phase1_names_skip_blank() {
-        let rows = vec![json!({ "name": "con1" }), json!({ "name": null }), json!({}), json!({ "name": "" }), json!({ "name": 7 })];
+        let rows = vec![
+            json!({ "name": "con1" }),
+            json!({ "name": null }),
+            json!({}),
+            json!({ "name": "" }),
+            json!({ "name": 7 }),
+        ];
         assert_eq!(phase1_names(&rows), ["con1", "7"]);
     }
 

@@ -77,7 +77,13 @@ pub type Result<T> = std::result::Result<T, OpnError>;
 
 impl OpnError {
     pub fn new(kind: ErrorType, message: impl Into<String>) -> Self {
-        Self { kind, message: message.into(), hint: None, status: None, details: None }
+        Self {
+            kind,
+            message: message.into(),
+            hint: None,
+            status: None,
+            details: None,
+        }
     }
     pub fn hint(mut self, hint: impl Into<String>) -> Self {
         self.hint = Some(hint.into());

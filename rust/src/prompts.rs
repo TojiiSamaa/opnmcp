@@ -17,29 +17,58 @@ struct PromptDef {
 }
 
 const PROMPTS: &[PromptDef] = &[
-    PromptDef { name: "firewall_security_review", title: "Firewall security review", description: "Reviews the firewall and reports findings, without changing anything.", args: &[] },
+    PromptDef {
+        name: "firewall_security_review",
+        title: "Firewall security review",
+        description: "Reviews the firewall and reports findings, without changing anything.",
+        args: &[],
+    },
     PromptDef {
         name: "troubleshoot_connectivity",
         title: "Troubleshoot connectivity",
         description: "Finds out why traffic between two addresses does not get through.",
         args: &[
-            Arg { name: "source", description: "Source IP address.", required: true },
-            Arg { name: "destination", description: "Destination IP address or host name.", required: true },
-            Arg { name: "port", description: "Destination port.", required: false },
-            Arg { name: "protocol", description: "tcp, udp or icmp.", required: false },
+            Arg {
+                name: "source",
+                description: "Source IP address.",
+                required: true,
+            },
+            Arg {
+                name: "destination",
+                description: "Destination IP address or host name.",
+                required: true,
+            },
+            Arg {
+                name: "port",
+                description: "Destination port.",
+                required: false,
+            },
+            Arg {
+                name: "protocol",
+                description: "tcp, udp or icmp.",
+                required: false,
+            },
         ],
     },
     PromptDef {
         name: "safe_firewall_change",
         title: "Safe firewall change",
         description: "Makes a firewall change through the staged workflow, with its checks.",
-        args: &[Arg { name: "change", description: "The change wanted, in plain words.", required: true }],
+        args: &[Arg {
+            name: "change",
+            description: "The change wanted, in plain words.",
+            required: true,
+        }],
     },
     PromptDef {
         name: "investigate_host",
         title: "Investigate a host",
         description: "Finds out what a device is and what it has been doing on the network.",
-        args: &[Arg { name: "ip", description: "IP address of the host.", required: true }],
+        args: &[Arg {
+            name: "ip",
+            description: "IP address of the host.",
+            required: true,
+        }],
     },
 ];
 
@@ -58,11 +87,19 @@ pub fn list() -> Value {
 }
 
 pub fn get(name: &str, args: &Value) -> Result<Value> {
-    let def = PROMPTS.iter().find(|p| p.name == name).ok_or_else(|| OpnError::new(ErrorType::InvalidInput, format!("Unknown prompt \"{name}\".")))?;
+    let def = PROMPTS.iter().find(|p| p.name == name).ok_or_else(|| {
+        OpnError::new(
+            ErrorType::InvalidInput,
+            format!("Unknown prompt \"{name}\"."),
+        )
+    })?;
     let arg = |k: &str| args.get(k).and_then(Value::as_str).map(String::from);
     for a in def.args.iter().filter(|a| a.required) {
         if arg(a.name).is_none() {
-            return Err(OpnError::new(ErrorType::InvalidInput, format!("Missing argument \"{}\".", a.name)));
+            return Err(OpnError::new(
+                ErrorType::InvalidInput,
+                format!("Missing argument \"{}\".", a.name),
+            ));
         }
     }
     let text = match name {
@@ -125,7 +162,14 @@ mod tests {
     fn four_prompts_and_required_args() {
         assert_eq!(list()["prompts"].as_array().unwrap().len(), 4);
         assert!(get("investigate_host", &json!({})).is_err());
-        let t = get("troubleshoot_connectivity", &json!({"source": "a", "destination": "b", "port": "443"})).unwrap();
-        assert!(t["messages"][0]["content"]["text"].as_str().unwrap().starts_with("Find out why a cannot reach b on port 443."));
+        let t = get(
+            "troubleshoot_connectivity",
+            &json!({"source": "a", "destination": "b", "port": "443"}),
+        )
+        .unwrap();
+        assert!(t["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("Find out why a cannot reach b on port 443."));
     }
 }

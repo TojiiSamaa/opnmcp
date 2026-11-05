@@ -26,10 +26,18 @@ pub struct Decision {
 
 impl Decision {
     fn new(access: Access, sensitive: bool) -> Self {
-        Self { access, sensitive, blocked: None }
+        Self {
+            access,
+            sensitive,
+            blocked: None,
+        }
     }
     fn blocked(access: Access, reason: String) -> Self {
-        Self { access, sensitive: false, blocked: Some(reason) }
+        Self {
+            access,
+            sensitive: false,
+            blocked: Some(reason),
+        }
     }
 }
 
@@ -43,10 +51,17 @@ pub struct AuthorizeOptions {
     pub read_only: bool,
 }
 
-static SAFE_SEGMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.,:-]+$").unwrap());
+static SAFE_SEGMENT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.,:-]+$").unwrap());
 static ALL_DOTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\.+$").unwrap());
-static READ_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(get|search|list|show|query|find|count|dump|status|stats|statistics|view)").unwrap());
-static SENSITIVE_COMMAND: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(download|export|rawdump|generatefile|keypair|genkeypair|psk|genkey|newotpseed)").unwrap());
+static READ_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(get|search|list|show|query|find|count|dump|status|stats|statistics|view)")
+        .unwrap()
+});
+static SENSITIVE_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(download|export|rawdump|generatefile|keypair|genkeypair|psk|genkey|newotpseed)")
+        .unwrap()
+});
 
 pub fn canonical_segment(segment: &str) -> String {
     segment.to_lowercase().replace('_', "")
@@ -56,18 +71,29 @@ pub fn canonical_segment(segment: &str) -> String {
 pub fn assert_safe_path(path: &str) -> Result<Vec<&str>> {
     let segments: Vec<&str> = path.split('/').collect();
     if segments.len() < 3 {
-        return Err(OpnError::new(ErrorType::InvalidPath, format!("\"{path}\" is not an API path: expected module/controller/command.")));
+        return Err(OpnError::new(
+            ErrorType::InvalidPath,
+            format!("\"{path}\" is not an API path: expected module/controller/command."),
+        ));
     }
     for segment in &segments {
         if !SAFE_SEGMENT.is_match(segment) || ALL_DOTS.is_match(segment) {
-            return Err(OpnError::new(ErrorType::InvalidPath, format!("Invalid path segment \"{segment}\" in \"{path}\".")).hint("Path segments may only contain letters, digits and _ . , : -"));
+            return Err(OpnError::new(
+                ErrorType::InvalidPath,
+                format!("Invalid path segment \"{segment}\" in \"{path}\"."),
+            )
+            .hint("Path segments may only contain letters, digits and _ . , : -"));
         }
     }
     Ok(segments)
 }
 
 pub fn canonical_path(path: &str) -> String {
-    path.split('/').take(3).map(canonical_segment).collect::<Vec<_>>().join("/")
+    path.split('/')
+        .take(3)
+        .map(canonical_segment)
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn canon(paths: &[&'static str]) -> HashMap<String, &'static str> {
@@ -164,17 +190,101 @@ static READ_ONLY_POSTS: LazyLock<HashMap<String, &'static str>> = LazyLock::new(
 /// Commandes entières qui ne font que lire, tirées d'un audit du catalogue d'API.
 static READ_COMMANDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
-        "accesses", "accounts", "aliases", "backups", "bfdcounters", "bfdneighbors", "bfdstaticroute", "bfdsummary",
-        "bgpneighbors", "bgpsummary", "cachestats", "caddyfile", "cainfo", "calist", "certdiff", "checkclamav", "checkredis",
-        "chronyauthdata", "chronysources", "chronysourcestats", "chronytracking", "circuits", "config", "configtest",
-        "connectionexists", "counters", "daily", "diff", "dirty", "errors", "generalrunningconfig", "gps", "hourly", "index", "info",
-        "interface", "interfacelist", "interfacesinfo", "ip", "isblocklistenabled", "isenabled", "issupported", "logfilters",
-        "macinfo", "memory", "meta", "monthly", "neighbor", "net", "ospfdatabase", "ospfinterface", "ospfoverview",
-        "ospfv3interface", "ospfv3overview", "pending", "pfstates", "pfstatistics", "picture", "pools", "powerstatus",
-        "productinfofeed", "providers", "remoteservice", "report", "reverselookup", "rolling", "rulestats", "running",
-        "services", "streams", "sum", "swanctl", "systemdisk", "systeminformation", "systemmbuf", "systemresources",
-        "systemswap", "systemtemperature", "systemtime", "tables", "templates", "testconfig", "timeserie", "tlshandshakes",
-        "top", "totals", "tree", "upgradestatus", "upsstatus", "userlist", "version", "vts", "yearly", "zones", "zoneshow",
+        "accesses",
+        "accounts",
+        "aliases",
+        "backups",
+        "bfdcounters",
+        "bfdneighbors",
+        "bfdstaticroute",
+        "bfdsummary",
+        "bgpneighbors",
+        "bgpsummary",
+        "cachestats",
+        "caddyfile",
+        "cainfo",
+        "calist",
+        "certdiff",
+        "checkclamav",
+        "checkredis",
+        "chronyauthdata",
+        "chronysources",
+        "chronysourcestats",
+        "chronytracking",
+        "circuits",
+        "config",
+        "configtest",
+        "connectionexists",
+        "counters",
+        "daily",
+        "diff",
+        "dirty",
+        "errors",
+        "generalrunningconfig",
+        "gps",
+        "hourly",
+        "index",
+        "info",
+        "interface",
+        "interfacelist",
+        "interfacesinfo",
+        "ip",
+        "isblocklistenabled",
+        "isenabled",
+        "issupported",
+        "logfilters",
+        "macinfo",
+        "memory",
+        "meta",
+        "monthly",
+        "neighbor",
+        "net",
+        "ospfdatabase",
+        "ospfinterface",
+        "ospfoverview",
+        "ospfv3interface",
+        "ospfv3overview",
+        "pending",
+        "pfstates",
+        "pfstatistics",
+        "picture",
+        "pools",
+        "powerstatus",
+        "productinfofeed",
+        "providers",
+        "remoteservice",
+        "report",
+        "reverselookup",
+        "rolling",
+        "rulestats",
+        "running",
+        "services",
+        "streams",
+        "sum",
+        "swanctl",
+        "systemdisk",
+        "systeminformation",
+        "systemmbuf",
+        "systemresources",
+        "systemswap",
+        "systemtemperature",
+        "systemtime",
+        "tables",
+        "templates",
+        "testconfig",
+        "timeserie",
+        "tlshandshakes",
+        "top",
+        "totals",
+        "tree",
+        "upgradestatus",
+        "upsstatus",
+        "userlist",
+        "version",
+        "vts",
+        "yearly",
+        "zones",
+        "zoneshow",
         "zonetest",
     ]
     .into_iter()
@@ -182,10 +292,13 @@ static READ_COMMANDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
 });
 
 /// Chemins dont la commande est ambiguë seule : core/firmware/log prend un paramètre "clear".
-static READ_PATHS: LazyLock<HashMap<String, &'static str>> = LazyLock::new(|| canon(&["diagnostics/firewall/log"]));
+static READ_PATHS: LazyLock<HashMap<String, &'static str>> =
+    LazyLock::new(|| canon(&["diagnostics/firewall/log"]));
 
 fn explain_blocked(path: &str) -> String {
-    format!("{path} is blocked: it can take the firewall down, grant access or destroy recovery data.")
+    format!(
+        "{path} is blocked: it can take the firewall down, grant access or destroy recovery data."
+    )
 }
 
 pub fn decide(path: &str, method_is_get: bool, unblocked: &[String], curated: bool) -> Decision {
@@ -203,20 +316,36 @@ pub fn decide(path: &str, method_is_get: bool, unblocked: &[String], curated: bo
     }
     if let Some(original) = CURATED_ONLY.get(&canonical) {
         if !curated && !unblocked_set.contains(&canonical) {
-            return Decision::blocked(Access::Write, format!("{original} is only available through its dedicated tool."));
+            return Decision::blocked(
+                Access::Write,
+                format!("{original} is only available through its dedicated tool."),
+            );
         }
     }
     // Les flux d'évènements ne finissent jamais : l'appel resterait suspendu jusqu'au délai.
     if command.starts_with("stream") {
-        return Decision::blocked(Access::Read, format!("{path} is a live event stream, which tool calls cannot consume."));
+        return Decision::blocked(
+            Access::Read,
+            format!("{path} is a live event stream, which tool calls cannot consume."),
+        );
     }
 
     // Les lectures de journaux sont des POST à portée dynamique : diagnostics/log/<module>/<scope>[/clear|export|live].
     if module == "diagnostics" && controller == "log" {
         let action = path.split('/').nth(4).map(str::to_lowercase);
         match action.as_deref() {
-            Some("clear") => return Decision::blocked(Access::Write, "Clearing logs is blocked: it destroys evidence.".into()),
-            Some("live") => return Decision::blocked(Access::Read, "Live log streams cannot be consumed by a tool call.".into()),
+            Some("clear") => {
+                return Decision::blocked(
+                    Access::Write,
+                    "Clearing logs is blocked: it destroys evidence.".into(),
+                )
+            }
+            Some("live") => {
+                return Decision::blocked(
+                    Access::Read,
+                    "Live log streams cannot be consumed by a tool call.".into(),
+                )
+            }
             _ => return Decision::new(Access::Read, false),
         }
     }
@@ -243,7 +372,13 @@ pub struct PolicySubject<'a> {
 }
 
 /// Échoue sauf si l'appel est permis. Renvoie la décision pour le journal et le mode simulation.
-pub fn authorize(subject: &PolicySubject, path: &str, method_is_get: bool, unblocked: &[String], opts: AuthorizeOptions) -> Result<Decision> {
+pub fn authorize(
+    subject: &PolicySubject,
+    path: &str,
+    method_is_get: bool,
+    unblocked: &[String],
+    opts: AuthorizeOptions,
+) -> Result<Decision> {
     assert_safe_path(path)?;
     let decision = decide(path, method_is_get, unblocked, opts.curated);
     if let Some(reason) = &decision.blocked {
@@ -270,26 +405,41 @@ mod tests {
 
     #[test]
     fn blocklist_resists_case_and_underscore() {
-        for p in ["core/system/re_boot", "core/system/REBOOT", "core/system/Reboot"] {
+        for p in [
+            "core/system/re_boot",
+            "core/system/REBOOT",
+            "core/system/Reboot",
+        ] {
             assert!(decide(p, false, &[], true).blocked.is_some(), "{p}");
         }
     }
 
     #[test]
     fn unknown_command_is_a_write() {
-        assert_eq!(decide("foo/bar/doSomething", false, &[], false).access, Access::Write);
-        assert_eq!(decide("firewall/filter/search_rule", false, &[], false).access, Access::Read);
+        assert_eq!(
+            decide("foo/bar/doSomething", false, &[], false).access,
+            Access::Write
+        );
+        assert_eq!(
+            decide("firewall/filter/search_rule", false, &[], false).access,
+            Access::Read
+        );
     }
 
     #[test]
     fn carp_status_is_not_a_read() {
-        assert_eq!(decide("diagnostics/interface/carp_status", false, &[], false).access, Access::Write);
+        assert_eq!(
+            decide("diagnostics/interface/carp_status", false, &[], false).access,
+            Access::Write
+        );
     }
 
     #[test]
     fn unblock_lifts_the_block() {
         let unblocked = vec!["core/firmware/update".to_string()];
-        assert!(decide("core/firmware/update", false, &unblocked, false).blocked.is_none());
+        assert!(decide("core/firmware/update", false, &unblocked, false)
+            .blocked
+            .is_none());
     }
 
     #[test]
@@ -300,7 +450,11 @@ mod tests {
 
     #[test]
     fn curated_only_needs_a_dedicated_tool() {
-        assert!(decide("core/backup/revert_backup", false, &[], false).blocked.is_some());
-        assert!(decide("core/backup/revert_backup", false, &[], true).blocked.is_none());
+        assert!(decide("core/backup/revert_backup", false, &[], false)
+            .blocked
+            .is_some());
+        assert!(decide("core/backup/revert_backup", false, &[], true)
+            .blocked
+            .is_none());
     }
 }

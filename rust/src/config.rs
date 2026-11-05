@@ -89,8 +89,10 @@ pub fn process_env() -> Env {
     std::env::vars().collect()
 }
 
-static INSTANCE_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_-]{1,32}$").unwrap());
-static VAR_REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap());
+static INSTANCE_NAME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_-]{1,32}$").unwrap());
+static VAR_REF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap());
 
 fn config_error(message: impl Into<String>, hint: Option<&str>) -> OpnError {
     let e = OpnError::new(ErrorType::ConfigError, message);
@@ -105,28 +107,51 @@ fn parse_bool(name: &str, value: Option<&str>, fallback: bool) -> Result<bool> {
     match v.trim().to_lowercase().as_str() {
         "true" | "1" | "yes" | "on" => Ok(true),
         "false" | "0" | "no" | "off" | "" => Ok(false),
-        _ => Err(config_error(format!("{name}: \"{v}\" is not a boolean (use true or false)."), None)),
+        _ => Err(config_error(
+            format!("{name}: \"{v}\" is not a boolean (use true or false)."),
+            None,
+        )),
     }
 }
 
-fn parse_integer(name: &str, value: Option<&str>, fallback: u64, min: u64, max: u64) -> Result<u64> {
+fn parse_integer(
+    name: &str,
+    value: Option<&str>,
+    fallback: u64,
+    min: u64,
+    max: u64,
+) -> Result<u64> {
     let Some(v) = value else { return Ok(fallback) };
     if v.is_empty() {
         return Ok(fallback);
     }
     match v.trim().parse::<u64>() {
         Ok(n) if n >= min && n <= max => Ok(n),
-        _ => Err(config_error(format!("{name}: \"{v}\" must be an integer between {min} and {max}."), None)),
+        _ => Err(config_error(
+            format!("{name}: \"{v}\" must be an integer between {min} and {max}."),
+            None,
+        )),
     }
 }
 
 fn normalize_url(raw: &str, label: &str) -> Result<String> {
-    let url = url::Url::parse(raw).map_err(|_| config_error(format!("{label}: \"{raw}\" is not a valid URL."), Some("Example: https://192.168.1.1 or https://fw.example.com:10443")))?;
+    let url = url::Url::parse(raw).map_err(|_| {
+        config_error(
+            format!("{label}: \"{raw}\" is not a valid URL."),
+            Some("Example: https://192.168.1.1 or https://fw.example.com:10443"),
+        )
+    })?;
     if url.scheme() != "https" && url.scheme() != "http" {
-        return Err(config_error(format!("{label}: only http and https URLs are supported."), None));
+        return Err(config_error(
+            format!("{label}: only http and https URLs are supported."),
+            None,
+        ));
     }
     if !url.username().is_empty() || url.password().is_some() {
-        return Err(config_error(format!("{label}: do not put credentials in the URL."), None));
+        return Err(config_error(
+            format!("{label}: do not put credentials in the URL."),
+            None,
+        ));
     }
     let path = url.path().trim_end_matches('/');
     let path = path.strip_suffix("/api").unwrap_or(path);
@@ -143,8 +168,12 @@ struct Credentials {
 
 /// Lit le fichier apikey.txt qu'OPNsense propose à la création d'une clé (key=... / secret=...).
 fn read_credentials_file(path: &str) -> Result<Credentials> {
-    let text = std::fs::read_to_string(path).map_err(|e| config_error(format!("Cannot read credentials file {path}: {e}"), None))?;
-    let mut out = Credentials { key: None, secret: None };
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| config_error(format!("Cannot read credentials file {path}: {e}"), None))?;
+    let mut out = Credentials {
+        key: None,
+        secret: None,
+    };
     for line in text.lines() {
         if let Some((name, value)) = line.split_once('=') {
             let value = value.trim();
@@ -164,7 +193,9 @@ fn read_credentials_file(path: &str) -> Result<Credentials> {
 fn read_ca(path: Option<&str>) -> Result<Option<String>> {
     match path {
         None => Ok(None),
-        Some(p) => std::fs::read_to_string(p).map(Some).map_err(|e| config_error(format!("Cannot read CA file {p}: {e}"), None)),
+        Some(p) => std::fs::read_to_string(p)
+            .map(Some)
+            .map_err(|e| config_error(format!("Cannot read CA file {p}: {e}"), None)),
     }
 }
 
@@ -178,7 +209,12 @@ fn expand(value: &str, env: &Env, wher: &str) -> Result<String> {
         let name = &caps[1];
         match env.get(name) {
             Some(v) => out.push_str(v),
-            None => return Err(config_error(format!("{wher}: environment variable {name} is not set."), None)),
+            None => {
+                return Err(config_error(
+                    format!("{wher}: environment variable {name} is not set."),
+                    None,
+                ))
+            }
         }
         last = m.end();
     }
@@ -206,7 +242,14 @@ fn text_of(raw: &Value, key: &str, env: Option<&Env>, wher: &str) -> Result<Opti
     }
 }
 
-fn bool_of(raw: &Value, key: &str, env: Option<&Env>, wher: &str, label: &str, fallback: bool) -> Result<bool> {
+fn bool_of(
+    raw: &Value,
+    key: &str,
+    env: Option<&Env>,
+    wher: &str,
+    label: &str,
+    fallback: bool,
+) -> Result<bool> {
     match raw.get(key) {
         Some(Value::Bool(b)) => Ok(*b),
         Some(Value::String(_)) => {
@@ -217,15 +260,24 @@ fn bool_of(raw: &Value, key: &str, env: Option<&Env>, wher: &str, label: &str, f
     }
 }
 
-fn build_instance(name: &str, raw: &Value, env: Option<&Env>, defaults: &Defaults) -> Result<InstanceConfig> {
+fn build_instance(
+    name: &str,
+    raw: &Value,
+    env: Option<&Env>,
+    defaults: &Defaults,
+) -> Result<InstanceConfig> {
     if !INSTANCE_NAME.is_match(name) {
         return Err(config_error(format!("Invalid instance name \"{name}\": use letters, digits, - and _ (32 characters at most)."), None));
     }
     let wher = format!("instance \"{name}\"");
-    let url_raw = text_of(raw, "url", env, &wher)?.ok_or_else(|| config_error(format!("{wher}: url is required."), None))?;
+    let url_raw = text_of(raw, "url", env, &wher)?
+        .ok_or_else(|| config_error(format!("{wher}: url is required."), None))?;
     let from_file = match text_of(raw, "credentials_file", env, &wher)? {
         Some(f) => read_credentials_file(&f)?,
-        None => Credentials { key: None, secret: None },
+        None => Credentials {
+            key: None,
+            secret: None,
+        },
     };
     let api_key = text_of(raw, "api_key", env, &wher)?.or(from_file.key);
     let api_secret = text_of(raw, "api_secret", env, &wher)?.or(from_file.secret);
@@ -248,11 +300,39 @@ fn build_instance(name: &str, raw: &Value, env: Option<&Env>, defaults: &Default
         url,
         api_key,
         api_secret,
-        verify_ssl: bool_of(raw, "verify_ssl", env, &wher, &format!("{wher} verify_ssl"), true)?,
+        verify_ssl: bool_of(
+            raw,
+            "verify_ssl",
+            env,
+            &wher,
+            &format!("{wher} verify_ssl"),
+            true,
+        )?,
         ca: read_ca(text_of(raw, "ca_file", env, &wher)?.as_deref())?,
-        allow_writes: bool_of(raw, "allow_writes", env, &wher, &format!("{wher} allow_writes"), defaults.allow_writes)?,
-        allow_sensitive: bool_of(raw, "allow_sensitive", env, &wher, &format!("{wher} allow_sensitive"), defaults.allow_sensitive)?,
-        dry_run: bool_of(raw, "dry_run", env, &wher, &format!("{wher} dry_run"), defaults.dry_run)?,
+        allow_writes: bool_of(
+            raw,
+            "allow_writes",
+            env,
+            &wher,
+            &format!("{wher} allow_writes"),
+            defaults.allow_writes,
+        )?,
+        allow_sensitive: bool_of(
+            raw,
+            "allow_sensitive",
+            env,
+            &wher,
+            &format!("{wher} allow_sensitive"),
+            defaults.allow_sensitive,
+        )?,
+        dry_run: bool_of(
+            raw,
+            "dry_run",
+            env,
+            &wher,
+            &format!("{wher} dry_run"),
+            defaults.dry_run,
+        )?,
         description: text_of(raw, "description", env, &wher)?,
         management_source: text_of(raw, "management_source", env, &wher)?,
         timeout_ms,
@@ -263,9 +343,19 @@ pub fn load_config(env: &Env) -> Result<ServerConfig> {
     let get = |k: &str| env.get(k).map(String::as_str);
     let defaults = Defaults {
         allow_writes: parse_bool("OPNSENSE_ALLOW_WRITES", get("OPNSENSE_ALLOW_WRITES"), false)?,
-        allow_sensitive: parse_bool("OPNSENSE_ALLOW_SENSITIVE", get("OPNSENSE_ALLOW_SENSITIVE"), false)?,
+        allow_sensitive: parse_bool(
+            "OPNSENSE_ALLOW_SENSITIVE",
+            get("OPNSENSE_ALLOW_SENSITIVE"),
+            false,
+        )?,
         dry_run: parse_bool("OPNSENSE_DRY_RUN", get("OPNSENSE_DRY_RUN"), false)?,
-        timeout_ms: parse_integer("OPNSENSE_TIMEOUT_SECONDS", get("OPNSENSE_TIMEOUT_SECONDS"), 30, 1, 600)? * 1000,
+        timeout_ms: parse_integer(
+            "OPNSENSE_TIMEOUT_SECONDS",
+            get("OPNSENSE_TIMEOUT_SECONDS"),
+            30,
+            1,
+            600,
+        )? * 1000,
     };
 
     let mut instances: OrderedMap<InstanceConfig> = OrderedMap::default();
@@ -275,10 +365,15 @@ pub fn load_config(env: &Env) -> Result<ServerConfig> {
         let parsed: Value = std::fs::read_to_string(path)
             .map_err(|e| e.to_string())
             .and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()))
-            .map_err(|e| config_error(format!("Cannot read OPNSENSE_CONFIG ({path}): {e}"), None))?;
+            .map_err(|e| {
+                config_error(format!("Cannot read OPNSENSE_CONFIG ({path}): {e}"), None)
+            })?;
         if let Some(map) = parsed.get("instances").and_then(Value::as_object) {
             for (name, raw) in map {
-                instances.insert(name.clone(), build_instance(name, raw, Some(env), &defaults)?);
+                instances.insert(
+                    name.clone(),
+                    build_instance(name, raw, Some(env), &defaults)?,
+                );
             }
         }
         if instances.is_empty() {
@@ -286,7 +381,10 @@ pub fn load_config(env: &Env) -> Result<ServerConfig> {
         }
         if let Some(d) = parsed.get("default").and_then(Value::as_str) {
             if !instances.contains_key(d) {
-                return Err(config_error(format!("Default instance \"{d}\" is not defined."), None));
+                return Err(config_error(
+                    format!("Default instance \"{d}\" is not defined."),
+                    None,
+                ));
             }
             default_instance = Some(d.to_string());
         }
@@ -296,25 +394,60 @@ pub fn load_config(env: &Env) -> Result<ServerConfig> {
         };
         let mut raw = serde_json::Map::new();
         raw.insert("url".into(), Value::String(url.to_string()));
-        for (field, var) in [("api_key", "OPNSENSE_API_KEY"), ("api_secret", "OPNSENSE_API_SECRET"), ("credentials_file", "OPNSENSE_API_CREDENTIALS_FILE"), ("verify_ssl", "OPNSENSE_VERIFY_SSL"), ("ca_file", "OPNSENSE_CA_FILE"), ("management_source", "OPNSENSE_MANAGEMENT_SOURCE")] {
+        for (field, var) in [
+            ("api_key", "OPNSENSE_API_KEY"),
+            ("api_secret", "OPNSENSE_API_SECRET"),
+            ("credentials_file", "OPNSENSE_API_CREDENTIALS_FILE"),
+            ("verify_ssl", "OPNSENSE_VERIFY_SSL"),
+            ("ca_file", "OPNSENSE_CA_FILE"),
+            ("management_source", "OPNSENSE_MANAGEMENT_SOURCE"),
+        ] {
             if let Some(v) = get(var) {
                 raw.insert(field.into(), Value::String(v.to_string()));
             }
         }
         // Valeurs issues de l'environnement : ce ne sont pas des modèles ${VAR}.
-        instances.insert("default".into(), build_instance("default", &Value::Object(raw), None, &defaults)?);
+        instances.insert(
+            "default".into(),
+            build_instance("default", &Value::Object(raw), None, &defaults)?,
+        );
     }
 
-    let toolsets = get("OPNSENSE_TOOLSETS").filter(|s| !s.is_empty()).map(|s| s.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect::<HashSet<_>>());
-    let default_instance = default_instance.unwrap_or_else(|| instances.keys().next().cloned().unwrap_or_default());
+    let toolsets = get("OPNSENSE_TOOLSETS").filter(|s| !s.is_empty()).map(|s| {
+        s.split(',')
+            .map(|x| x.trim().to_lowercase())
+            .filter(|x| !x.is_empty())
+            .collect::<HashSet<_>>()
+    });
+    let default_instance =
+        default_instance.unwrap_or_else(|| instances.keys().next().cloned().unwrap_or_default());
     Ok(ServerConfig {
         instances,
         default_instance,
         toolsets,
-        rollback_seconds: parse_integer("OPNSENSE_ROLLBACK_SECONDS", get("OPNSENSE_ROLLBACK_SECONDS"), 120, 30, 3600)?,
-        unblocked: get("OPNSENSE_UNBLOCK").unwrap_or("").split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+        rollback_seconds: parse_integer(
+            "OPNSENSE_ROLLBACK_SECONDS",
+            get("OPNSENSE_ROLLBACK_SECONDS"),
+            120,
+            30,
+            3600,
+        )?,
+        unblocked: get("OPNSENSE_UNBLOCK")
+            .unwrap_or("")
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
         elicit: parse_bool("OPNSENSE_ELICIT", get("OPNSENSE_ELICIT"), true)?,
-        max_response_chars: parse_integer("OPNSENSE_MAX_RESPONSE_CHARS", get("OPNSENSE_MAX_RESPONSE_CHARS"), 120_000, 2_000, 5_000_000)? as usize,
-        audit_log: get("OPNSENSE_AUDIT_LOG").filter(|s| !s.is_empty()).map(String::from),
+        max_response_chars: parse_integer(
+            "OPNSENSE_MAX_RESPONSE_CHARS",
+            get("OPNSENSE_MAX_RESPONSE_CHARS"),
+            120_000,
+            2_000,
+            5_000_000,
+        )? as usize,
+        audit_log: get("OPNSENSE_AUDIT_LOG")
+            .filter(|s| !s.is_empty())
+            .map(String::from),
     })
 }

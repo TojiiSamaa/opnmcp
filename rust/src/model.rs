@@ -31,10 +31,18 @@ fn selected_is_one(v: &Value) -> bool {
 pub fn flatten_model(node: &Value) -> Value {
     match node {
         Value::Array(a) => Value::Array(a.iter().map(flatten_model).collect()),
-        Value::Object(o) if is_option_map(o) => {
-            Value::String(o.iter().filter(|(_, v)| selected_is_one(v)).map(|(k, _)| k.as_str()).collect::<Vec<_>>().join(","))
-        }
-        Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), flatten_model(v))).collect()),
+        Value::Object(o) if is_option_map(o) => Value::String(
+            o.iter()
+                .filter(|(_, v)| selected_is_one(v))
+                .map(|(k, _)| k.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+        ),
+        Value::Object(o) => Value::Object(
+            o.iter()
+                .map(|(k, v)| (k.clone(), flatten_model(v)))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -69,7 +77,10 @@ pub fn describe_model(node: &Value) -> Value {
             Value::Object(out)
         }
         Value::Object(o) => {
-            let fields: Obj = o.iter().map(|(k, v)| (k.clone(), describe_model(v))).collect();
+            let fields: Obj = o
+                .iter()
+                .map(|(k, v)| (k.clone(), describe_model(v)))
+                .collect();
             json!({ "fields": fields })
         }
         Value::Null => json!({}),
@@ -123,7 +134,8 @@ impl GridResult {
         self.rows.len()
     }
     pub fn has_more(&self) -> bool {
-        self.offset as u64 + self.rows.len() as u64 > 0 && (self.offset as u64 + self.rows.len() as u64) < self.total
+        self.offset as u64 + self.rows.len() as u64 > 0
+            && (self.offset as u64 + self.rows.len() as u64) < self.total
     }
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
@@ -135,7 +147,10 @@ impl GridResult {
         let more = (self.offset as u64 + self.rows.len() as u64) < self.total;
         m.insert("has_more".into(), json!(more));
         if more {
-            m.insert("next_offset".into(), json!(self.offset + self.rows.len() as i64));
+            m.insert(
+                "next_offset".into(),
+                json!(self.offset + self.rows.len() as i64),
+            );
         }
         Value::Object(m)
     }
@@ -143,11 +158,19 @@ impl GridResult {
 
 /// Tout ce qui sait envoyer un POST : le client brut ou sa vue d'outil.
 pub trait PostClient {
-    fn post_json(&self, path: &str, body: Option<Value>) -> impl std::future::Future<Output = Result<Value>> + Send;
+    fn post_json(
+        &self,
+        path: &str,
+        body: Option<Value>,
+    ) -> impl std::future::Future<Output = Result<Value>> + Send;
 }
 
 /// Appelle un point de recherche et normalise l'enveloppe bootgrid en pagination par décalage.
-pub async fn search_grid(client: &impl PostClient, path: &str, args: &GridArgs) -> Result<GridResult> {
+pub async fn search_grid(
+    client: &impl PostClient,
+    path: &str,
+    args: &GridArgs,
+) -> Result<GridResult> {
     let limit = clamp_limit(args.limit);
     let offset = args.offset.unwrap_or(0).max(0);
     // Les pages sont alignées sur rowCount : un décalage qui n'est pas un multiple demande une lecture plus large.
@@ -157,7 +180,10 @@ pub async fn search_grid(client: &impl PostClient, path: &str, args: &GridArgs) 
     let mut body = Map::new();
     body.insert("current".into(), json!(current));
     body.insert("rowCount".into(), json!(row_count));
-    body.insert("searchPhrase".into(), json!(args.search.clone().unwrap_or_default()));
+    body.insert(
+        "searchPhrase".into(),
+        json!(args.search.clone().unwrap_or_default()),
+    );
     body.insert("sort".into(), json!({}));
     if let Some(extra) = &args.extra {
         for (k, v) in extra {
@@ -165,13 +191,22 @@ pub async fn search_grid(client: &impl PostClient, path: &str, args: &GridArgs) 
         }
     }
     let raw = client.post_json(path, Some(Value::Object(body))).await?;
-    Ok(paginate(&raw, offset, limit, if aligned { 0 } else { offset as usize }))
+    Ok(paginate(
+        &raw,
+        offset,
+        limit,
+        if aligned { 0 } else { offset as usize },
+    ))
 }
 
 fn raw_rows(raw: &Value) -> Vec<Value> {
     match raw {
         Value::Array(a) => a.clone(),
-        Value::Object(o) => o.get("rows").and_then(Value::as_array).cloned().unwrap_or_default(),
+        Value::Object(o) => o
+            .get("rows")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
         _ => vec![],
     }
 }
@@ -179,7 +214,11 @@ fn raw_rows(raw: &Value) -> Vec<Value> {
 pub fn paginate(raw: &Value, offset: i64, limit: i64, skip: usize) -> GridResult {
     let all = raw_rows(raw);
     let limit_u = limit as usize;
-    let rows: Vec<Value> = if skip > 0 { all.iter().skip(skip).take(limit_u).cloned().collect() } else { all.iter().take(limit_u).cloned().collect() };
+    let rows: Vec<Value> = if skip > 0 {
+        all.iter().skip(skip).take(limit_u).cloned().collect()
+    } else {
+        all.iter().take(limit_u).cloned().collect()
+    };
     let total = match raw {
         Value::Object(o) => o
             .get("total")
@@ -188,19 +227,39 @@ pub fn paginate(raw: &Value, offset: i64, limit: i64, skip: usize) -> GridResult
             .unwrap_or(all.len() as u64),
         _ => all.len() as u64,
     };
-    GridResult { rows, total, offset, limit }
+    GridResult {
+        rows,
+        total,
+        offset,
+        limit,
+    }
 }
 
 /// Pagination côté client, pour les points qui renvoient tout d'un coup.
 pub fn paginate_array(items: &[Value], limit: Option<i64>, offset: Option<i64>) -> GridResult {
     let l = clamp_limit(limit);
     let o = offset.unwrap_or(0).max(0);
-    let rows: Vec<Value> = items.iter().skip(o as usize).take(l as usize).cloned().collect();
-    GridResult { rows, total: items.len() as u64, offset: o, limit: l }
+    let rows: Vec<Value> = items
+        .iter()
+        .skip(o as usize)
+        .take(l as usize)
+        .cloned()
+        .collect();
+    GridResult {
+        rows,
+        total: items.len() as u64,
+        offset: o,
+        limit: l,
+    }
 }
 
 /// Lit toutes les pages d'un point de recherche, pour les analyses qui ont besoin de l'ensemble.
-pub async fn fetch_all(client: &impl PostClient, path: &str, extra: Option<Obj>, max_rows: u64) -> Result<Vec<Value>> {
+pub async fn fetch_all(
+    client: &impl PostClient,
+    path: &str,
+    extra: Option<Obj>,
+    max_rows: u64,
+) -> Result<Vec<Value>> {
     let mut body = Map::new();
     body.insert("current".into(), json!(1));
     body.insert("rowCount".into(), json!(max_rows));
@@ -216,12 +275,17 @@ pub async fn fetch_all(client: &impl PostClient, path: &str, extra: Option<Obj>,
 pub const FETCH_ALL_MAX: u64 = 20_000;
 
 fn looks_like_uuid(s: &str) -> bool {
-    s.len() >= 36 && s.chars().take(36).all(|c| c.is_ascii_hexdigit() || c == '-')
+    s.len() >= 36
+        && s.chars()
+            .take(36)
+            .all(|c| c.is_ascii_hexdigit() || c == '-')
 }
 
 /// Retire les champs d'affichage pour qu'une liste ne dépense pas le contexte.
 pub fn compact_row(row: &Value) -> Value {
-    let Value::Object(o) = row else { return row.clone() };
+    let Value::Object(o) = row else {
+        return row.clone();
+    };
     let mut out = Map::new();
     for (k, v) in o {
         if k.starts_with("alias_meta_") || k == "category_colors" {
@@ -242,7 +306,12 @@ pub fn compact_row(row: &Value) -> Value {
 }
 
 pub fn compact_grid(grid: &GridResult) -> Value {
-    let compact = GridResult { rows: grid.rows.iter().map(compact_row).collect(), total: grid.total, offset: grid.offset, limit: grid.limit };
+    let compact = GridResult {
+        rows: grid.rows.iter().map(compact_row).collect(),
+        total: grid.total,
+        offset: grid.offset,
+        limit: grid.limit,
+    };
     compact.to_value()
 }
 
@@ -254,9 +323,15 @@ fn str_field<'a>(o: &'a Obj, key: &str) -> Option<&'a str> {
 pub fn assert_write_ok(result: &Value, what: &str) -> Result<Obj> {
     let empty = Obj::new();
     let obj = result.as_object().unwrap_or(&empty);
-    let status = str_field(obj, "result").or_else(|| str_field(obj, "status")).unwrap_or("").to_lowercase();
+    let status = str_field(obj, "result")
+        .or_else(|| str_field(obj, "status"))
+        .unwrap_or("")
+        .to_lowercase();
     let validations = obj.get("validations");
-    if status == "failed" || status == "error" || matches!(validations, Some(Value::Object(_)) | Some(Value::Array(_))) {
+    if status == "failed"
+        || status == "error"
+        || matches!(validations, Some(Value::Object(_)) | Some(Value::Array(_)))
+    {
         let details = match validations {
             Some(v) => json!({ "validations": v }),
             None => Value::Object(obj.clone()),
@@ -265,10 +340,18 @@ pub fn assert_write_ok(result: &Value, what: &str) -> Result<Obj> {
     }
     // Une UserException côté pare-feu (supprimer un alias utilisé par une règle, par exemple).
     if let Some(msg) = str_field(obj, "errorMessage") {
-        return Err(OpnError::new(ErrorType::ValidationFailed, format!("{what} was refused by the firewall: {msg}")).details(Value::Object(obj.clone())));
+        return Err(OpnError::new(
+            ErrorType::ValidationFailed,
+            format!("{what} was refused by the firewall: {msg}"),
+        )
+        .details(Value::Object(obj.clone())));
     }
     if status == "not found" {
-        return Err(OpnError::new(ErrorType::NotFound, format!("{what}: the item was not found.")).hint("List the items again to get a current uuid."));
+        return Err(OpnError::new(
+            ErrorType::NotFound,
+            format!("{what}: the item was not found."),
+        )
+        .hint("List the items again to get a current uuid."));
     }
     Ok(obj.clone())
 }
@@ -278,7 +361,11 @@ pub fn assert_applied(result: &Value, what: &str, allow_empty: bool) -> Result<O
     let empty = Obj::new();
     let obj = result.as_object().unwrap_or(&empty);
     if let Some(msg) = str_field(obj, "errorMessage") {
-        return Err(OpnError::new(ErrorType::UpstreamError, format!("{what} did not complete: {msg}")).details(Value::Object(obj.clone())));
+        return Err(OpnError::new(
+            ErrorType::UpstreamError,
+            format!("{what} did not complete: {msg}"),
+        )
+        .details(Value::Object(obj.clone())));
     }
     let raw = obj.get("status").or_else(|| obj.get("result"));
     let status = match raw {
@@ -288,11 +375,23 @@ pub fn assert_applied(result: &Value, what: &str, allow_empty: bool) -> Result<O
     };
     let lower = status.to_lowercase();
     if !status.is_empty() && (lower.contains("error") || lower.contains("fail")) {
-        return Err(OpnError::new(ErrorType::UpstreamError, format!("{what} did not complete: {}", status.trim())).details(Value::Object(obj.clone())));
+        return Err(OpnError::new(
+            ErrorType::UpstreamError,
+            format!("{what} did not complete: {}", status.trim()),
+        )
+        .details(Value::Object(obj.clone())));
     }
     // Le backend répond par une chaîne vide quand il échoue ou dépasse le délai.
-    if raw.is_some() && !matches!(raw, Some(Value::Null)) && status.trim().is_empty() && !allow_empty {
-        return Err(OpnError::new(ErrorType::UpstreamError, format!("{what} did not complete: the firewall backend gave no answer.")).details(Value::Object(obj.clone())));
+    if raw.is_some()
+        && !matches!(raw, Some(Value::Null))
+        && status.trim().is_empty()
+        && !allow_empty
+    {
+        return Err(OpnError::new(
+            ErrorType::UpstreamError,
+            format!("{what} did not complete: the firewall backend gave no answer."),
+        )
+        .details(Value::Object(obj.clone())));
     }
     Ok(obj.clone())
 }
@@ -312,8 +411,16 @@ pub fn assert_ok(result: &Value, what: &str) -> Result<Obj> {
         .unwrap_or_default();
     let status = status.trim();
     if !status.eq_ignore_ascii_case("ok") {
-        let shown = if status.is_empty() { "the firewall backend gave no answer" } else { status };
-        return Err(OpnError::new(ErrorType::UpstreamError, format!("{what} did not report success: {shown}.")).details(Value::Object(obj.clone())));
+        let shown = if status.is_empty() {
+            "the firewall backend gave no answer"
+        } else {
+            status
+        };
+        return Err(OpnError::new(
+            ErrorType::UpstreamError,
+            format!("{what} did not report success: {shown}."),
+        )
+        .details(Value::Object(obj.clone())));
     }
     Ok(obj.clone())
 }
@@ -325,7 +432,11 @@ pub fn model_fields(input: &Obj) -> Obj {
         let s = match v {
             Value::Null => continue,
             Value::Bool(b) => (if *b { "1" } else { "0" }).to_string(),
-            Value::Array(a) => a.iter().map(|x| x.as_str().map_or_else(|| x.to_string(), String::from)).collect::<Vec<_>>().join(","),
+            Value::Array(a) => a
+                .iter()
+                .map(|x| x.as_str().map_or_else(|| x.to_string(), String::from))
+                .collect::<Vec<_>>()
+                .join(","),
             Value::String(s) => s.clone(),
             other => other.to_string(),
         };
@@ -346,7 +457,9 @@ mod tests {
 
     #[test]
     fn write_failures_are_detected() {
-        assert!(assert_write_ok(&json!({"result": "failed", "validations": {"a": "x"}}), "t").is_err());
+        assert!(
+            assert_write_ok(&json!({"result": "failed", "validations": {"a": "x"}}), "t").is_err()
+        );
         assert!(assert_write_ok(&json!({"result": "saved", "uuid": "u"}), "t").is_ok());
         assert!(assert_write_ok(&json!({"result": "not found"}), "t").is_err());
     }

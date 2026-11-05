@@ -1,4 +1,5 @@
 //! osmcp : serveur MCP pour pare-feu OPNsense (portage Rust de opnmcp).
+#![allow(clippy::result_large_err)] // OpnError porte message, indice et détails : boxer coûterait plus que le gain
 
 pub mod changes;
 pub mod client;

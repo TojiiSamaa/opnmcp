@@ -45,17 +45,39 @@ struct AppState {
 }
 
 fn deny(status: StatusCode, message: &str) -> Response {
-    (status, [(header::CONTENT_TYPE, "application/json")], json!({ "error": message }).to_string()).into_response()
+    (
+        status,
+        [(header::CONTENT_TYPE, "application/json")],
+        json!({ "error": message }).to_string(),
+    )
+        .into_response()
 }
 
-async fn handle(State(state): State<Arc<AppState>>, method: Method, uri: Uri, headers: HeaderMap, body: Bytes) -> Response {
+async fn handle(
+    State(state): State<Arc<AppState>>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     // Une page web peut faire appeler une adresse locale par un navigateur : vérifier Host arrête le DNS rebinding.
-    let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     if !state.allowed.contains(host) {
-        return deny(StatusCode::FORBIDDEN, "Host not allowed. See OPNSENSE_MCP_ALLOWED_HOSTS.");
+        return deny(
+            StatusCode::FORBIDDEN,
+            "Host not allowed. See OPNSENSE_MCP_ALLOWED_HOSTS.",
+        );
     }
     if let Some(token) = &state.token {
-        if !token_matches(headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()), token) {
+        if !token_matches(
+            headers
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok()),
+            token,
+        ) {
             return deny(StatusCode::UNAUTHORIZED, "Invalid or missing bearer token.");
         }
     }
@@ -63,7 +85,10 @@ async fn handle(State(state): State<Arc<AppState>>, method: Method, uri: Uri, he
         return deny(StatusCode::NOT_FOUND, "Not found. The endpoint is /mcp.");
     }
     if method != Method::POST {
-        return deny(StatusCode::METHOD_NOT_ALLOWED, "This server keeps no session: only POST is supported.");
+        return deny(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "This server keeps no session: only POST is supported.",
+        );
     }
     let Ok(message) = serde_json::from_slice::<Value>(&body) else {
         return (StatusCode::BAD_REQUEST, [(header::CONTENT_TYPE, "application/json")], json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "Parse error" } }).to_string()).into_response();
@@ -71,7 +96,12 @@ async fn handle(State(state): State<Arc<AppState>>, method: Method, uri: Uri, he
     let session = Session::new(state.registry.clone(), None);
     let reply = match message {
         Value::Array(batch) => {
-            let replies: Vec<Value> = futures::future::join_all(batch.into_iter().map(|m| session.handle(m))).await.into_iter().flatten().collect();
+            let replies: Vec<Value> =
+                futures::future::join_all(batch.into_iter().map(|m| session.handle(m)))
+                    .await
+                    .into_iter()
+                    .flatten()
+                    .collect();
             (!replies.is_empty()).then_some(Value::Array(replies))
         }
         single => session.handle(single).await,
@@ -84,13 +114,29 @@ async fn handle(State(state): State<Arc<AppState>>, method: Method, uri: Uri, he
 }
 
 pub async fn serve(registry: Arc<Registry>, options: HttpOptions) -> Result<()> {
-    let HttpOptions { host, port, token, allowed_hosts } = options;
+    let HttpOptions {
+        host,
+        port,
+        token,
+        allowed_hosts,
+    } = options;
     if token.is_none() && !is_loopback(&host) {
         return Err(OpnError::new(ErrorType::ConfigError, format!("Refusing to listen on {host} without a token: anyone on the network could drive the firewall.")).hint("Set OPNSENSE_MCP_TOKEN, or listen on 127.0.0.1."));
     }
-    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await.map_err(|e| OpnError::new(ErrorType::ConfigError, format!("Cannot listen on {host}:{port}: {e}")))?;
+    let listener = tokio::net::TcpListener::bind((host.as_str(), port))
+        .await
+        .map_err(|e| {
+            OpnError::new(
+                ErrorType::ConfigError,
+                format!("Cannot listen on {host}:{port}: {e}"),
+            )
+        })?;
     let bound = listener.local_addr().map(|a| a.port()).unwrap_or(port);
-    let shown = if host.contains(':') { format!("[{host}]") } else { host.clone() };
+    let shown = if host.contains(':') {
+        format!("[{host}]")
+    } else {
+        host.clone()
+    };
     let mut allowed: HashSet<String> = allowed_hosts.into_iter().collect();
     for name in [shown.as_str(), "localhost", "127.0.0.1", "[::1]"] {
         if name == shown || is_loopback(&host) {
@@ -98,8 +144,19 @@ pub async fn serve(registry: Arc<Registry>, options: HttpOptions) -> Result<()> 
         }
     }
     eprintln!("[osmcp] listening on http://{shown}:{bound}/mcp");
-    let app = Router::new().fallback(handle).with_state(Arc::new(AppState { registry, token, allowed }));
-    axum::serve(listener, app).await.map_err(|e| OpnError::new(ErrorType::InternalError, format!("HTTP server stopped: {e}")))
+    let app = Router::new()
+        .fallback(handle)
+        .with_state(Arc::new(AppState {
+            registry,
+            token,
+            allowed,
+        }));
+    axum::serve(listener, app).await.map_err(|e| {
+        OpnError::new(
+            ErrorType::InternalError,
+            format!("HTTP server stopped: {e}"),
+        )
+    })
 }
 
 #[cfg(test)]

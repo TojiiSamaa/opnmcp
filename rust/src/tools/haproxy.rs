@@ -6,7 +6,10 @@
 use crate::error::Result;
 use crate::model::{assert_applied, model_fields, Obj};
 use crate::schema::{self, Field, Ty};
-use crate::tool::{crud_tools, gather, read_tool, tool, BoxFut, Commands, CrudSpec, Ctx, Domain, ToolAccess, ToolDef};
+use crate::tool::{
+    crud_tools, gather, read_tool, tool, BoxFut, Commands, CrudSpec, Ctx, Domain, ToolAccess,
+    ToolDef,
+};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -20,12 +23,42 @@ fn fields_input() -> Field {
 
 /// (singulier, pluriel, libellé, enveloppe, bascule)
 const ENTITIES: [(&str, &str, &str, &str, Option<&str>); 6] = [
-    ("frontend", "frontends", "HAProxy frontend", "frontend", Some("toggle_frontend")),
-    ("backend", "backends", "HAProxy backend", "backend", Some("toggle_backend")),
-    ("server", "servers", "HAProxy server", "server", Some("toggle_server")),
-    ("action", "actions", "HAProxy rule", "action", Some("toggle_action")),
+    (
+        "frontend",
+        "frontends",
+        "HAProxy frontend",
+        "frontend",
+        Some("toggle_frontend"),
+    ),
+    (
+        "backend",
+        "backends",
+        "HAProxy backend",
+        "backend",
+        Some("toggle_backend"),
+    ),
+    (
+        "server",
+        "servers",
+        "HAProxy server",
+        "server",
+        Some("toggle_server"),
+    ),
+    (
+        "action",
+        "actions",
+        "HAProxy rule",
+        "action",
+        Some("toggle_action"),
+    ),
     ("acl", "acls", "HAProxy condition", "acl", None),
-    ("healthcheck", "healthchecks", "HAProxy health check", "healthcheck", None),
+    (
+        "healthcheck",
+        "healthchecks",
+        "HAProxy health check",
+        "healthcheck",
+        None,
+    ),
 ];
 
 /// Les noms sont construits une seule fois au démarrage : les fuites sont bornées.
@@ -33,7 +66,15 @@ fn leak(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
 
-fn entity_tools((singular, plural, label, wrapper, toggle): (&str, &str, &'static str, &'static str, Option<&str>)) -> Vec<ToolDef> {
+fn entity_tools(
+    (singular, plural, label, wrapper, toggle): (
+        &str,
+        &str,
+        &'static str,
+        &'static str,
+        Option<&str>,
+    ),
+) -> Vec<ToolDef> {
     let mut spec = CrudSpec::new(
         Domain::Haproxy,
         leak(format!("haproxy_{singular}")),
@@ -115,7 +156,14 @@ mod tests {
     fn tool_names_match_the_typescript_server() {
         let names: Vec<String> = tools().into_iter().map(|t| t.name).collect();
         assert_eq!(names.len(), 3 + 4 * 6 + 4 + 2 * 3);
-        for n in ["opn_add_haproxy_frontend", "opn_toggle_haproxy_server", "opn_delete_haproxy_acl", "opn_list_haproxy_healthchecks", "opn_get_haproxy_action", "opn_update_haproxy_backend"] {
+        for n in [
+            "opn_add_haproxy_frontend",
+            "opn_toggle_haproxy_server",
+            "opn_delete_haproxy_acl",
+            "opn_list_haproxy_healthchecks",
+            "opn_get_haproxy_action",
+            "opn_update_haproxy_backend",
+        ] {
             assert!(names.iter().any(|x| x == n), "{n}");
         }
         assert!(!names.iter().any(|x| x == "opn_toggle_haproxy_acl"));
@@ -124,9 +172,18 @@ mod tests {
     #[test]
     fn add_requires_fields_and_update_does_not() {
         let defs = tools();
-        let add = defs.iter().find(|t| t.name == "opn_add_haproxy_backend").unwrap();
-        assert!(add.input.to_json_schema()["required"].as_array().unwrap().contains(&json!("fields")));
-        let upd = defs.iter().find(|t| t.name == "opn_update_haproxy_backend").unwrap();
+        let add = defs
+            .iter()
+            .find(|t| t.name == "opn_add_haproxy_backend")
+            .unwrap();
+        assert!(add.input.to_json_schema()["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("fields")));
+        let upd = defs
+            .iter()
+            .find(|t| t.name == "opn_update_haproxy_backend")
+            .unwrap();
         assert_eq!(upd.input.to_json_schema()["required"], json!(["uuid"]));
     }
 }

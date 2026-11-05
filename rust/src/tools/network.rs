@@ -8,7 +8,22 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 const INTERFACE_FIELDS: [&str; 16] = [
-    "identifier", "device", "description", "status", "enabled", "link_type", "link_typev6", "addr4", "addr6", "ipv4", "ipv6", "macaddr", "mtu", "vlan_tag", "gateways", "routes",
+    "identifier",
+    "device",
+    "description",
+    "status",
+    "enabled",
+    "link_type",
+    "link_typev6",
+    "addr4",
+    "addr6",
+    "ipv4",
+    "ipv6",
+    "macaddr",
+    "mtu",
+    "vlan_tag",
+    "gateways",
+    "routes",
 ];
 
 /// Ce modèle appelle la description « descr ».
@@ -23,7 +38,10 @@ fn route_model(args: &Obj) -> Obj {
 /// Les lignes de la table de routage, filtrées par le texte cherché (sans tenir compte de la casse).
 fn filter_routes(rows: Vec<Value>, search: Option<&str>) -> Vec<Value> {
     match search.map(str::to_lowercase).filter(|q| !q.is_empty()) {
-        Some(q) => rows.into_iter().filter(|r| r.to_string().to_lowercase().contains(&q)).collect(),
+        Some(q) => rows
+            .into_iter()
+            .filter(|r| r.to_string().to_lowercase().contains(&q))
+            .collect(),
         None => rows,
     }
 }
@@ -31,9 +49,17 @@ fn filter_routes(rows: Vec<Value>, search: Option<&str>) -> Vec<Value> {
 fn ipv6_summary(rows: &[Value]) -> Value {
     let interfaces: Vec<Value> = rows
         .iter()
-        .filter(|r| r.get("identifier").is_some_and(|v| !matches!(v, Value::Null | Value::Bool(false)) && v.as_str() != Some("")))
+        .filter(|r| {
+            r.get("identifier").is_some_and(|v| {
+                !matches!(v, Value::Null | Value::Bool(false)) && v.as_str() != Some("")
+            })
+        })
         .map(|r| {
-            let method = r.get("link_typev6").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none"));
+            let method = r
+                .get("link_typev6")
+                .filter(|v| !v.is_null())
+                .cloned()
+                .unwrap_or_else(|| json!("none"));
             let mut m = pick(r, &["identifier", "description"]);
             m["method"] = method;
             if let Some(v) = r.get("addr6") {
@@ -45,7 +71,10 @@ fn ipv6_summary(rows: &[Value]) -> Value {
             sparse(&m)
         })
         .collect();
-    let with_ipv6 = interfaces.iter().filter(|i| i.get("method").is_some_and(|m| js_str(Some(m)) != "none")).count();
+    let with_ipv6 = interfaces
+        .iter()
+        .filter(|i| i.get("method").is_some_and(|m| js_str(Some(m)) != "none"))
+        .count();
     json!({ "interfaces": interfaces, "summary": { "total": interfaces.len(), "with_ipv6": with_ipv6, "without_ipv6": interfaces.len() - with_ipv6 } })
 }
 
@@ -125,13 +154,28 @@ pub fn tools() -> Vec<ToolDef> {
         "static route",
         "routes/routes",
         "route",
-        Commands { search: "searchroute", get: "getroute", add: Some("addroute"), set: Some("setroute"), del: Some("delroute"), toggle: Some("toggleroute") },
+        Commands {
+            search: "searchroute",
+            get: "getroute",
+            add: Some("addroute"),
+            set: Some("setroute"),
+            del: Some("delroute"),
+            toggle: Some("toggleroute"),
+        },
     );
     routes.fields = vec![
-        schema::string("network").opt().desc("Destination network, in CIDR form."),
-        schema::string("gateway").opt().desc("Gateway name, from opn_list_gateways."),
-        schema::string("description").opt().desc("Free-text description."),
-        schema::boolean("enabled").opt().desc("Default true on creation."),
+        schema::string("network")
+            .opt()
+            .desc("Destination network, in CIDR form."),
+        schema::string("gateway")
+            .opt()
+            .desc("Gateway name, from opn_list_gateways."),
+        schema::string("description")
+            .opt()
+            .desc("Free-text description."),
+        schema::boolean("enabled")
+            .opt()
+            .desc("Default true on creation."),
     ];
     routes.required = vec!["network", "gateway"];
     routes.to_model = Some(Arc::new(route_model));
@@ -149,24 +193,54 @@ mod tests {
     fn names_access_and_domains() {
         let d = tools();
         let names: Vec<&str> = d.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(&names[..10], ["opn_list_interfaces", "opn_get_interface", "opn_interface_stats", "opn_arp_table", "opn_ndp_table", "opn_routing_table", "opn_ipv6_status", "opn_list_gateways", "opn_list_vlans", "opn_list_virtual_ips"]);
-        assert!(names.contains(&"opn_add_static_route") && names.contains(&"opn_toggle_static_route") && names.contains(&"opn_delete_static_route"));
+        assert_eq!(
+            &names[..10],
+            [
+                "opn_list_interfaces",
+                "opn_get_interface",
+                "opn_interface_stats",
+                "opn_arp_table",
+                "opn_ndp_table",
+                "opn_routing_table",
+                "opn_ipv6_status",
+                "opn_list_gateways",
+                "opn_list_vlans",
+                "opn_list_virtual_ips"
+            ]
+        );
+        assert!(
+            names.contains(&"opn_add_static_route")
+                && names.contains(&"opn_toggle_static_route")
+                && names.contains(&"opn_delete_static_route")
+        );
         assert!(d.iter().all(|t| t.domain == Domain::Network));
         let add = d.iter().find(|t| t.name == "opn_add_static_route").unwrap();
-        assert!(add.input.validate(&json!({ "network": "10.0.0.0/8" })).is_err());
-        assert!(add.input.validate(&json!({ "network": "10.0.0.0/8", "gateway": "WAN_GW" })).is_ok());
+        assert!(add
+            .input
+            .validate(&json!({ "network": "10.0.0.0/8" }))
+            .is_err());
+        assert!(add
+            .input
+            .validate(&json!({ "network": "10.0.0.0/8", "gateway": "WAN_GW" }))
+            .is_ok());
     }
 
     #[test]
     fn route_model_renames_description() {
         let args = json!({ "network": "10.0.0.0/8", "description": "lab", "enabled": true });
         let m = route_model(args.as_object().unwrap());
-        assert_eq!(Value::Object(m), json!({ "network": "10.0.0.0/8", "descr": "lab", "enabled": "1" }));
+        assert_eq!(
+            Value::Object(m),
+            json!({ "network": "10.0.0.0/8", "descr": "lab", "enabled": "1" })
+        );
     }
 
     #[test]
     fn routing_table_search_ignores_case() {
-        let rows = vec![json!({ "destination": "10.0.0.0/8", "netif": "LAN" }), json!({ "destination": "default", "netif": "wan" })];
+        let rows = vec![
+            json!({ "destination": "10.0.0.0/8", "netif": "LAN" }),
+            json!({ "destination": "default", "netif": "wan" }),
+        ];
         assert_eq!(filter_routes(rows.clone(), Some("lan")).len(), 1);
         assert_eq!(filter_routes(rows.clone(), Some("")).len(), 2);
         assert_eq!(filter_routes(rows, None).len(), 2);
@@ -180,7 +254,10 @@ mod tests {
             json!({ "description": "no id" }),
         ];
         let out = ipv6_summary(&rows);
-        assert_eq!(out["summary"], json!({ "total": 2, "with_ipv6": 1, "without_ipv6": 1 }));
+        assert_eq!(
+            out["summary"],
+            json!({ "total": 2, "with_ipv6": 1, "without_ipv6": 1 })
+        );
         assert_eq!(out["interfaces"][1]["method"], "none");
     }
 }

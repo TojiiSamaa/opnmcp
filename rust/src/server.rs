@@ -42,9 +42,17 @@ impl Registry {
         let requested = config.toolsets.as_ref();
         for name in requested.into_iter().flatten() {
             if name != "all" && Domain::parse(name).is_none() {
-                return Err(OpnError::new(ErrorType::ConfigError, format!("OPNSENSE_TOOLSETS: unknown toolset \"{name}\".")).hint(format!(
+                return Err(OpnError::new(
+                    ErrorType::ConfigError,
+                    format!("OPNSENSE_TOOLSETS: unknown toolset \"{name}\"."),
+                )
+                .hint(format!(
                     "Known toolsets: all, {}.",
-                    Domain::ALL.iter().map(|d| d.as_str()).collect::<Vec<_>>().join(", ")
+                    Domain::ALL
+                        .iter()
+                        .map(|d| d.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )));
             }
         }
@@ -53,7 +61,9 @@ impl Registry {
             Some(set) => set.contains(d.as_str()),
             None => !OPT_IN_TOOLSETS.contains(&d),
         };
-        let can_write = runtime.instances().any(|i| i.config.allow_writes || i.config.dry_run);
+        let can_write = runtime
+            .instances()
+            .any(|i| i.config.allow_writes || i.config.dry_run);
         Ok(Arc::new_cyclic(|me: &Weak<Registry>| {
             let info: Arc<dyn Fn() -> Value + Send + Sync> = {
                 let me = me.clone();
@@ -73,13 +83,27 @@ impl Registry {
                 })
                 .map(Arc::new)
                 .collect();
-            Registry { runtime: runtime.clone(), tools }
+            Registry {
+                runtime: runtime.clone(),
+                tools,
+            }
         }))
     }
 
     pub fn info(&self) -> Value {
-        let active: Vec<Domain> = self.tools.iter().filter(|t| t.name != "opn_mcp_info").map(|t| t.domain).collect();
-        let names = |loaded: bool| Domain::ALL.iter().filter(|d| active.contains(d) == loaded).map(|d| d.as_str()).collect::<Vec<_>>();
+        let active: Vec<Domain> = self
+            .tools
+            .iter()
+            .filter(|t| t.name != "opn_mcp_info")
+            .map(|t| t.domain)
+            .collect();
+        let names = |loaded: bool| {
+            Domain::ALL
+                .iter()
+                .filter(|d| active.contains(d) == loaded)
+                .map(|d| d.as_str())
+                .collect::<Vec<_>>()
+        };
         json!({
             "server": "osmcp",
             "version": VERSION,
@@ -97,10 +121,17 @@ impl Registry {
         let names = self.runtime.instance_names();
         if names.len() > 1 {
             let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-            schema.push(schema::enumeration("instance", &refs).opt().desc(&format!("Firewall to act on. Default: {}.", self.runtime.config.default_instance)));
+            schema.push(schema::enumeration("instance", &refs).opt().desc(&format!(
+                "Firewall to act on. Default: {}.",
+                self.runtime.config.default_instance
+            )));
         }
         if def.access != ToolAccess::Read {
-            schema.push(schema::boolean("dry_run").opt().desc("Show what would be sent without sending anything."));
+            schema.push(
+                schema::boolean("dry_run")
+                    .opt()
+                    .desc("Show what would be sent without sending anything."),
+            );
         }
         schema.to_json_schema()
     }
@@ -136,7 +167,11 @@ pub fn render_result(value: &Value, max_chars: usize) -> String {
     if len <= max_chars {
         return text;
     }
-    if let Some(rows) = value.get("rows").and_then(Value::as_array).filter(|r| r.len() > 1) {
+    if let Some(rows) = value
+        .get("rows")
+        .and_then(Value::as_array)
+        .filter(|r| r.len() > 1)
+    {
         let mut keep = rows.len() * max_chars / len;
         let offset = value.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
         while keep > 0 {
@@ -181,7 +216,14 @@ pub struct Session {
 impl Session {
     /// `out` : canal vers le client, absent en HTTP sans session (donc ni elicitation ni journal poussé).
     pub fn new(registry: Arc<Registry>, out: Option<Outbound>) -> Arc<Self> {
-        let session = Arc::new(Session { registry, out, elicitation: AtomicBool::new(false), next_id: AtomicI64::new(1), pending: Mutex::new(HashMap::new()), listener: Mutex::new(None) });
+        let session = Arc::new(Session {
+            registry,
+            out,
+            elicitation: AtomicBool::new(false),
+            next_id: AtomicI64::new(1),
+            pending: Mutex::new(HashMap::new()),
+            listener: Mutex::new(None),
+        });
         if let Some(out) = &session.out {
             // Prévient le client dès qu'un retour se déclenche entre deux appels d'outils.
             let out = out.clone();
@@ -220,17 +262,33 @@ impl Session {
         };
         let reply = match self.dispatch(&method, &params).await {
             Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-            Err((code, message)) => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }),
+            Err((code, message)) => {
+                json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+            }
         };
         Some(reply)
     }
 
-    async fn dispatch(self: &Arc<Self>, method: &str, params: &Value) -> std::result::Result<Value, (i64, String)> {
+    async fn dispatch(
+        self: &Arc<Self>,
+        method: &str,
+        params: &Value,
+    ) -> std::result::Result<Value, (i64, String)> {
         match method {
             "initialize" => {
-                let wanted = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
-                let version = if SUPPORTED_PROTOCOLS.contains(&wanted) { wanted } else { SUPPORTED_PROTOCOLS[0] };
-                self.elicitation.store(params.pointer("/capabilities/elicitation").is_some(), Ordering::Relaxed);
+                let wanted = params
+                    .get("protocolVersion")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let version = if SUPPORTED_PROTOCOLS.contains(&wanted) {
+                    wanted
+                } else {
+                    SUPPORTED_PROTOCOLS[0]
+                };
+                self.elicitation.store(
+                    params.pointer("/capabilities/elicitation").is_some(),
+                    Ordering::Relaxed,
+                );
                 Ok(json!({
                     "protocolVersion": version,
                     "capabilities": { "logging": {}, "tools": { "listChanged": false }, "resources": { "listChanged": false }, "prompts": { "listChanged": false } },
@@ -246,19 +304,25 @@ impl Session {
                 let Some(def) = self.registry.tools.iter().find(|t| t.name == name).cloned() else {
                     return Err((-32602, format!("Unknown tool: {name}")));
                 };
-                let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+                let args = params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
                 Ok(self.invoke(&def, args).await)
             }
             "resources/list" => Ok(crate::resources::list(&self.registry.runtime)),
             "resources/templates/list" => Ok(json!({ "resourceTemplates": [] })),
             "resources/read" => {
                 let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
-                crate::resources::read(&self.registry.runtime, uri).await.map_err(|e| (-32602, e.message))
+                crate::resources::read(&self.registry.runtime, uri)
+                    .await
+                    .map_err(|e| (-32602, e.message))
             }
             "prompts/list" => Ok(crate::prompts::list()),
             "prompts/get" => {
                 let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-                crate::prompts::get(name, params.get("arguments").unwrap_or(&Value::Null)).map_err(|e| (-32602, e.message))
+                crate::prompts::get(name, params.get("arguments").unwrap_or(&Value::Null))
+                    .map_err(|e| (-32602, e.message))
             }
             other => Err((-32601, format!("Method not found: {other}"))),
         }
@@ -266,7 +330,10 @@ impl Session {
 
     /// Demande confirmation à un humain avant une action destructive, quand le client sait demander. Échoue fermé.
     async fn confirm_with_human(&self, def: &ToolDef, args: &Args) -> Result<()> {
-        let (Some(confirmation), true) = (&def.confirmation, self.registry.runtime.config.elicit) else { return Ok(()) };
+        let (Some(confirmation), true) = (&def.confirmation, self.registry.runtime.config.elicit)
+        else {
+            return Ok(());
+        };
         let Some(out) = &self.out else { return Ok(()) };
         if !self.elicitation.load(Ordering::Relaxed) {
             return Ok(());
@@ -281,18 +348,33 @@ impl Session {
                 "requestedSchema": { "type": "object", "properties": { "confirm": { "type": "boolean", "title": "Confirm", "description": "Go ahead with this action." } }, "required": ["confirm"] },
             },
         });
-        let cancelled = |why: String| OpnError::new(ErrorType::UserCancelled, format!("Could not get a confirmation from the user: {why}. Nothing was done."));
+        let cancelled = |why: String| {
+            OpnError::new(
+                ErrorType::UserCancelled,
+                format!("Could not get a confirmation from the user: {why}. Nothing was done."),
+            )
+        };
         if out.send(request).is_err() {
             return Err(cancelled("the connection is closed".into()));
         }
         let answer = rx.await.map_err(|_| cancelled("no answer".into()))?;
         if let Some(e) = answer.get("error") {
-            return Err(cancelled(e.get("message").and_then(Value::as_str).unwrap_or("error").to_string()));
+            return Err(cancelled(
+                e.get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("error")
+                    .to_string(),
+            ));
         }
         let result = answer.get("result").cloned().unwrap_or(Value::Null);
-        let accepted = result.get("action").and_then(Value::as_str) == Some("accept") && result.pointer("/content/confirm") == Some(&Value::Bool(true));
+        let accepted = result.get("action").and_then(Value::as_str) == Some("accept")
+            && result.pointer("/content/confirm") == Some(&Value::Bool(true));
         if !accepted {
-            return Err(OpnError::new(ErrorType::UserCancelled, "The user did not confirm this action, so nothing was done.").hint("Do not retry unless the user asks for it."));
+            return Err(OpnError::new(
+                ErrorType::UserCancelled,
+                "The user did not confirm this action, so nothing was done.",
+            )
+            .hint("Do not retry unless the user asks for it."));
         }
         Ok(())
     }
@@ -363,10 +445,20 @@ impl Session {
         .await;
 
         match outcome {
-            Ok(result) => json!({ "content": [{ "type": "text", "text": render_result(&result, runtime.config.max_response_chars) }] }),
+            Ok(result) => {
+                json!({ "content": [{ "type": "text", "text": render_result(&result, runtime.config.max_response_chars) }] })
+            }
             Err(err) => {
                 if def.access != ToolAccess::Read || err.is(ErrorType::BlockedEndpoint) {
-                    self.audit(def, audit_target.as_deref(), &audit_args, dry_run, &writes, started, Some(err.kind.as_str()));
+                    self.audit(
+                        def,
+                        audit_target.as_deref(),
+                        &audit_args,
+                        dry_run,
+                        &writes,
+                        started,
+                        Some(err.kind.as_str()),
+                    );
                 }
                 error_result(&err)
             }
@@ -374,26 +466,47 @@ impl Session {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn audit(&self, def: &ToolDef, instance: Option<&str>, args: &Value, dry_run: bool, writes: &WriteLog, started: std::time::Instant, error: Option<&str>) {
+    fn audit(
+        &self,
+        def: &ToolDef,
+        instance: Option<&str>,
+        args: &Value,
+        dry_run: bool,
+        writes: &WriteLog,
+        started: std::time::Instant,
+        error: Option<&str>,
+    ) {
         let access = match def.access {
             ToolAccess::Read => "read",
             ToolAccess::Write => "write",
             ToolAccess::Destructive => "destructive",
         };
         let mut entry = Map::new();
-        entry.insert("instance".into(), instance.map_or(Value::Null, |i| json!(i)));
+        entry.insert(
+            "instance".into(),
+            instance.map_or(Value::Null, |i| json!(i)),
+        );
         entry.insert("tool".into(), json!(def.name));
         entry.insert("access".into(), json!(access));
         if dry_run {
             entry.insert("dry_run".into(), json!(true));
         }
         entry.insert("args".into(), args.clone());
-        entry.insert("outcome".into(), json!(if error.is_some() { "error" } else { "ok" }));
+        entry.insert(
+            "outcome".into(),
+            json!(if error.is_some() { "error" } else { "ok" }),
+        );
         if let Some(e) = error {
             entry.insert("error_type".into(), json!(e));
         }
-        entry.insert("writes".into(), Value::Array(writes.lock().unwrap().iter().map(|w| w.to_json()).collect()));
-        entry.insert("duration_ms".into(), json!(started.elapsed().as_millis() as u64));
+        entry.insert(
+            "writes".into(),
+            Value::Array(writes.lock().unwrap().iter().map(|w| w.to_json()).collect()),
+        );
+        entry.insert(
+            "duration_ms".into(),
+            json!(started.elapsed().as_millis() as u64),
+        );
         self.registry.runtime.audit(Value::Object(entry));
     }
 }
@@ -404,7 +517,9 @@ mod tests {
 
     #[test]
     fn render_cuts_rows_not_text() {
-        let rows: Vec<Value> = (0..200).map(|i| json!({ "n": i, "pad": "xxxxxxxxxxxxxxxxxxxx" })).collect();
+        let rows: Vec<Value> = (0..200)
+            .map(|i| json!({ "n": i, "pad": "xxxxxxxxxxxxxxxxxxxx" }))
+            .collect();
         let v = json!({ "rows": rows, "count": 200, "offset": 0 });
         let s = render_result(&v, 2000);
         let parsed: Value = serde_json::from_str(&s).unwrap();

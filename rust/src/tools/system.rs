@@ -4,10 +4,15 @@ use super::shared::{fetch_config_json, fetch_config_xml, ConfigOptions};
 use super::Info;
 use crate::client::RequestOptions;
 use crate::error::{ErrorType, OpnError, Result};
-use crate::model::{assert_applied, compact_grid, fetch_all, paginate_array, search_grid, GridResult, Obj, FETCH_ALL_MAX};
+use crate::model::{
+    assert_applied, compact_grid, fetch_all, paginate_array, search_grid, GridResult, Obj,
+    FETCH_ALL_MAX,
+};
 use crate::redact::redact_xml_lines;
 use crate::schema::{self, Field};
-use crate::tool::{gather, paging, read_tool, sparse, tool, BoxFut, Domain, ScopedApi, ToolAccess, ToolDef};
+use crate::tool::{
+    gather, paging, read_tool, sparse, tool, BoxFut, Domain, ScopedApi, ToolAccess, ToolDef,
+};
 use serde_json::{json, Map, Value};
 
 /// Comme String(v) côté JS, pour comparer des champs que le pare-feu rend tantôt en nombre, tantôt en texte.
@@ -40,22 +45,38 @@ fn truthy(v: Option<&Value>) -> bool {
 }
 
 pub(super) fn pick(o: &Value, keys: &[&str]) -> Value {
-    let m: Map<String, Value> = keys.iter().filter_map(|k| o.get(*k).map(|v| (k.to_string(), v.clone()))).collect();
+    let m: Map<String, Value> = keys
+        .iter()
+        .filter_map(|k| o.get(*k).map(|v| (k.to_string(), v.clone())))
+        .collect();
     Value::Object(m)
 }
 
-pub(super) fn get_src(api: &ScopedApi, name: &'static str, path: &'static str) -> (&'static str, BoxFut<Result<Value>>) {
+pub(super) fn get_src(
+    api: &ScopedApi,
+    name: &'static str,
+    path: &'static str,
+) -> (&'static str, BoxFut<Result<Value>>) {
     let api = api.clone();
     (name, Box::pin(async move { api.get_(path).await }))
 }
 
 pub(super) fn all_src(api: &ScopedApi, path: &'static str) -> BoxFut<Result<Value>> {
     let api = api.clone();
-    Box::pin(async move { Ok(Value::Array(fetch_all(&api, path, None, FETCH_ALL_MAX).await?)) })
+    Box::pin(async move {
+        Ok(Value::Array(
+            fetch_all(&api, path, None, FETCH_ALL_MAX).await?,
+        ))
+    })
 }
 
 fn backup_id(name: &'static str, desc: &str) -> Field {
-    schema::string(name).regex(r"^config-[0-9._]+\.xml$", "Expected a backup id such as config-1762345678.1234.xml").desc(desc)
+    schema::string(name)
+        .regex(
+            r"^config-[0-9._]+\.xml$",
+            "Expected a backup id such as config-1762345678.1234.xml",
+        )
+        .desc(desc)
 }
 
 pub(super) fn rows_of(v: Option<&Value>) -> Vec<Value> {
@@ -111,7 +132,10 @@ pub fn tools(info: Info) -> Vec<ToolDef> {
 }
 
 fn paging_no_search() -> Vec<Field> {
-    paging().into_iter().filter(|f| f.name != "search").collect()
+    paging()
+        .into_iter()
+        .filter(|f| f.name != "search")
+        .collect()
 }
 
 fn more() -> Vec<ToolDef> {
@@ -382,23 +406,56 @@ fn more() -> Vec<ToolDef> {
 
 /// Un chemin pointé dans la configuration ; une valeur null reste atteignable, comme côté TypeScript.
 fn walk_section<'a>(config: &'a Value, section: &str) -> Option<&'a Value> {
-    section.split('.').try_fold(config, |node, part| node.as_object()?.get(part))
+    section
+        .split('.')
+        .try_fold(config, |node, part| node.as_object()?.get(part))
 }
 
 fn scan_summary(data: &Obj, unavailable: Map<String, Value>) -> Value {
-    let firmware = data.get("firmware").filter(|v| v.is_object()).cloned().unwrap_or_else(|| json!({}));
-    let product = firmware.get("product").filter(|v| v.is_object()).unwrap_or(&firmware);
-    let installed: Vec<Value> = rows_of(data.get("plugins").and_then(|p| p.get("plugin"))).into_iter().filter(|p| js_str(p.get("installed")) == "1").collect();
+    let firmware = data
+        .get("firmware")
+        .filter(|v| v.is_object())
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let product = firmware
+        .get("product")
+        .filter(|v| v.is_object())
+        .unwrap_or(&firmware);
+    let installed: Vec<Value> = rows_of(data.get("plugins").and_then(|p| p.get("plugin")))
+        .into_iter()
+        .filter(|p| js_str(p.get("installed")) == "1")
+        .collect();
     let services = rows_of(data.get("services"));
-    let running = |name: &str| services.iter().any(|s| js_str(s.get("name").or_else(|| s.get("id"))) == name && is_one(s.get("running")));
-    let running_id = |id: &str| services.iter().any(|s| js_str(s.get("id")) == id && is_one(s.get("running")));
+    let running = |name: &str| {
+        services.iter().any(|s| {
+            js_str(s.get("name").or_else(|| s.get("id"))) == name && is_one(s.get("running"))
+        })
+    };
+    let running_id = |id: &str| {
+        services
+            .iter()
+            .any(|s| js_str(s.get("id")) == id && is_one(s.get("running")))
+    };
     let rules = rows_of(data.get("rules"));
     let mut sections: Vec<(String, usize)> = data
         .get("config")
         .and_then(Value::as_object)
-        .map(|c| c.iter().map(|(k, v)| (k.clone(), serde_json::to_string(v).map_or(0, |s| s.chars().count()))).collect())
+        .map(|c| {
+            c.iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        serde_json::to_string(v).map_or(0, |s| s.chars().count()),
+                    )
+                })
+                .collect()
+        })
         .unwrap_or_default();
-    sections.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()).then_with(|| a.0.cmp(&b.0)));
+    sections.sort_by(|a, b| {
+        a.0.to_lowercase()
+            .cmp(&b.0.to_lowercase())
+            .then_with(|| a.0.cmp(&b.0))
+    });
     json!({
         "version": product.get("product_version").cloned().unwrap_or(Value::Null),
         "plugins": installed.iter().filter_map(|p| p.get("name").cloned()).collect::<Vec<_>>(),
@@ -439,14 +496,39 @@ mod tests {
         assert_eq!(
             names,
             [
-                "opn_mcp_info", "opn_system_status", "opn_firmware_status", "opn_list_plugins", "opn_list_services", "opn_control_service", "opn_gateway_status", "opn_system_log",
-                "opn_list_config_backups", "opn_diff_config_backups", "opn_restore_config_backup", "opn_download_config", "opn_scan_config", "opn_get_config_section", "opn_list_tunables"
+                "opn_mcp_info",
+                "opn_system_status",
+                "opn_firmware_status",
+                "opn_list_plugins",
+                "opn_list_services",
+                "opn_control_service",
+                "opn_gateway_status",
+                "opn_system_log",
+                "opn_list_config_backups",
+                "opn_diff_config_backups",
+                "opn_restore_config_backup",
+                "opn_download_config",
+                "opn_scan_config",
+                "opn_get_config_section",
+                "opn_list_tunables"
             ]
         );
-        let destructive: Vec<&str> = d.iter().filter(|t| t.access == ToolAccess::Destructive).map(|t| t.name.as_str()).collect();
-        assert_eq!(destructive, ["opn_control_service", "opn_restore_config_backup"]);
+        let destructive: Vec<&str> = d
+            .iter()
+            .filter(|t| t.access == ToolAccess::Destructive)
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(
+            destructive,
+            ["opn_control_service", "opn_restore_config_backup"]
+        );
         assert!(d.iter().all(|t| t.domain == Domain::System));
-        assert!(d.iter().find(|t| t.name == "opn_firmware_status").unwrap().open_world);
+        assert!(
+            d.iter()
+                .find(|t| t.name == "opn_firmware_status")
+                .unwrap()
+                .open_world
+        );
     }
 
     #[test]
@@ -454,12 +536,22 @@ mod tests {
         let d = defs();
         let by = |n: &str| d.iter().find(|t| t.name == n).unwrap().input.clone();
         let restore = by("opn_restore_config_backup");
-        assert!(restore.validate(&json!({ "backup": "config-1762345678.1234.xml" })).is_ok());
-        assert!(restore.validate(&json!({ "backup": "../etc/passwd" })).is_err());
+        assert!(restore
+            .validate(&json!({ "backup": "config-1762345678.1234.xml" }))
+            .is_ok());
+        assert!(restore
+            .validate(&json!({ "backup": "../etc/passwd" }))
+            .is_err());
         let ctl = by("opn_control_service");
-        assert!(ctl.validate(&json!({ "name": "unbound", "action": "restart", "id": "unbound/x" })).is_ok());
-        assert!(ctl.validate(&json!({ "name": "un bound", "action": "restart" })).is_err());
-        assert!(ctl.validate(&json!({ "name": "unbound", "action": "reboot" })).is_err());
+        assert!(ctl
+            .validate(&json!({ "name": "unbound", "action": "restart", "id": "unbound/x" }))
+            .is_ok());
+        assert!(ctl
+            .validate(&json!({ "name": "un bound", "action": "restart" }))
+            .is_err());
+        assert!(ctl
+            .validate(&json!({ "name": "unbound", "action": "reboot" }))
+            .is_err());
         assert!(by("opn_list_plugins").validate(&json!({})).is_ok());
         assert!(!by("opn_list_plugins").has("search"));
     }
@@ -497,7 +589,10 @@ mod tests {
         assert_eq!(out["dns"], json!({ "unbound": true, "dnsmasq": false }));
         assert_eq!(out["dhcp_backend"]["isc"], false);
         // "0" est vrai en JS : la première règle compte comme héritée.
-        assert_eq!(out["firewall_rules"], json!({ "mvc": 1, "legacy": 1, "automatic": 1 }));
+        assert_eq!(
+            out["firewall_rules"],
+            json!({ "mvc": 1, "legacy": 1, "automatic": 1 })
+        );
         assert_eq!(out["config_sections"][0]["name"], "A");
     }
 }

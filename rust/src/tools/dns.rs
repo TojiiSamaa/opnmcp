@@ -3,9 +3,14 @@
 
 use crate::client::RequestOptions;
 use crate::error::{ErrorType, OpnError, Result};
-use crate::model::{assert_applied, assert_write_ok, compact_grid, flatten_model, model_fields, search_grid, Obj};
+use crate::model::{
+    assert_applied, assert_write_ok, compact_grid, flatten_model, model_fields, search_grid, Obj,
+};
 use crate::schema::{self, Field, Ty};
-use crate::tool::{crud_tools, paging, read_tool, service_write, tool, uuid, Args, CrudSpec, Commands, Ctx, Domain, ToolAccess, ToolDef};
+use crate::tool::{
+    crud_tools, paging, read_tool, service_write, tool, uuid, Args, Commands, CrudSpec, Ctx,
+    Domain, ToolAccess, ToolDef,
+};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -18,8 +23,14 @@ const MAX_DOMAIN_LEN: usize = 253;
 
 fn domain_list() -> Field {
     let item = Ty::Str {
-        regex: Some((regex::Regex::new(r"^[A-Za-z0-9*._-]+$").expect("regex"), "Expected a domain name".to_string())),
-        check: Some((Arc::new(|v: &str| v.chars().count() <= MAX_DOMAIN_LEN), "Too long: at most 253 characters")),
+        regex: Some((
+            regex::Regex::new(r"^[A-Za-z0-9*._-]+$").expect("regex"),
+            "Expected a domain name".to_string(),
+        )),
+        check: Some((
+            Arc::new(|v: &str| v.chars().count() <= MAX_DOMAIN_LEN),
+            "Too long: at most 253 characters",
+        )),
     };
     schema::array_of("domains", item).desc("Domain names.")
 }
@@ -42,13 +53,29 @@ fn dnsbl_fields() -> Vec<Field> {
 
 fn forward_fields() -> Vec<Field> {
     vec![
-        schema::string("domain").opt().desc("Domain to forward. Empty forwards everything."),
-        schema::string("server").opt().desc("Address of the upstream server."),
-        schema::integer("port").opt().min(1).max(65535).desc("Upstream port."),
-        schema::boolean("forward_tcp_upstream").opt().desc("Use TCP to reach this server."),
-        schema::boolean("forward_first").opt().desc("Fall back to direct resolution when the forward fails."),
-        schema::string("description").opt().desc("Free-text description."),
-        schema::boolean("enabled").opt().desc("Default true on creation."),
+        schema::string("domain")
+            .opt()
+            .desc("Domain to forward. Empty forwards everything."),
+        schema::string("server")
+            .opt()
+            .desc("Address of the upstream server."),
+        schema::integer("port")
+            .opt()
+            .min(1)
+            .max(65535)
+            .desc("Upstream port."),
+        schema::boolean("forward_tcp_upstream")
+            .opt()
+            .desc("Use TCP to reach this server."),
+        schema::boolean("forward_first")
+            .opt()
+            .desc("Fall back to direct resolution when the forward fails."),
+        schema::string("description")
+            .opt()
+            .desc("Free-text description."),
+        schema::boolean("enabled")
+            .opt()
+            .desc("Default true on creation."),
     ]
 }
 
@@ -58,29 +85,52 @@ fn split_list(value: &Value) -> Vec<String> {
         Value::String(s) => s.clone(),
         other => other.to_string(),
     };
-    text.split(['\n', ',']).map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()
+    text.split(['\n', ','])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 fn require_domains(args: &Args) -> Result<Vec<String>> {
     let domains = args.strs("domains");
     if domains.is_empty() {
-        return Err(OpnError::new(ErrorType::InvalidInput, "domains: at least one domain is required."));
+        return Err(OpnError::new(
+            ErrorType::InvalidInput,
+            "domains: at least one domain is required.",
+        ));
     }
     Ok(domains)
 }
 
 async fn read_allowlist(ctx: &Ctx, id: &str) -> Result<Vec<String>> {
-    let res = ctx.api.get("unbound/settings/get_dnsbl", RequestOptions::new().param(id)).await?;
+    let res = ctx
+        .api
+        .get(
+            "unbound/settings/get_dnsbl",
+            RequestOptions::new().param(id),
+        )
+        .await?;
     let Some(form) = res.get("blocklist").filter(|v| v.is_object()) else {
-        return Err(OpnError::new(ErrorType::NotFound, format!("DNSBL policy {id} was not found.")).hint("opn_list_dnsbl lists the policies."));
+        return Err(OpnError::new(
+            ErrorType::NotFound,
+            format!("DNSBL policy {id} was not found."),
+        )
+        .hint("opn_list_dnsbl lists the policies."));
     };
     // Un CSVListField revient sous forme de table d'options, en texte simple sur les versions plus anciennes.
-    Ok(split_list(&flatten_model(form.get("allowlists").unwrap_or(&Value::Null))))
+    Ok(split_list(&flatten_model(
+        form.get("allowlists").unwrap_or(&Value::Null),
+    )))
 }
 
 async fn write_allowlist(ctx: &Ctx, id: &str, entries: &[String], what: &str) -> Result<Value> {
     // Ce sont des CSVListField : un saut de ligne ferait échouer tout le champ à son masque par élément.
-    let write = ctx.api.post("unbound/settings/set_dnsbl", Some(json!({ "blocklist": { "allowlists": entries.join(",") } })), RequestOptions::new().param(id));
+    let write = ctx.api.post(
+        "unbound/settings/set_dnsbl",
+        Some(json!({ "blocklist": { "allowlists": entries.join(",") } })),
+        RequestOptions::new().param(id),
+    );
     service_write(ctx, write, what, &DNSBL_RECONFIGURE.map(String::from), true).await
 }
 
@@ -97,19 +147,50 @@ fn merged(base: Value, extra: Value) -> Value {
 
 /// Liste paginée sans autre argument que la pagination.
 fn grid_list(name: &str, title: &str, desc: &str, path: &'static str) -> ToolDef {
-    read_tool(name, title, desc, Domain::Dns).input(paging()).run(move |args, ctx| async move { Ok(compact_grid(&search_grid(&ctx.api, path, &args.grid()).await?)) })
+    read_tool(name, title, desc, Domain::Dns)
+        .input(paging())
+        .run(move |args, ctx| async move {
+            Ok(compact_grid(
+                &search_grid(&ctx.api, path, &args.grid()).await?,
+            ))
+        })
 }
 
 /// Les commandes portent toutes le même suffixe (host_override, forward, dot).
 macro_rules! cmds {
     ($s:literal) => {
-        Commands { search: concat!("search_", $s), get: concat!("get_", $s), add: Some(concat!("add_", $s)), set: Some(concat!("set_", $s)), del: Some(concat!("del_", $s)), toggle: Some(concat!("toggle_", $s)) }
+        Commands {
+            search: concat!("search_", $s),
+            get: concat!("get_", $s),
+            add: Some(concat!("add_", $s)),
+            set: Some(concat!("set_", $s)),
+            del: Some(concat!("del_", $s)),
+            toggle: Some(concat!("toggle_", $s)),
+        }
     };
 }
 
 #[allow(clippy::too_many_arguments)]
-fn crud(singular: &'static str, plural: &'static str, label: &'static str, commands: Commands, wrapper: &'static str, fields: Vec<Field>, required: &[&'static str], list_note: Option<&'static str>, write_note: &'static str) -> Vec<ToolDef> {
-    let mut spec = CrudSpec::new(Domain::Dns, singular, plural, label, "unbound/settings", wrapper, commands);
+fn crud(
+    singular: &'static str,
+    plural: &'static str,
+    label: &'static str,
+    commands: Commands,
+    wrapper: &'static str,
+    fields: Vec<Field>,
+    required: &[&'static str],
+    list_note: Option<&'static str>,
+    write_note: &'static str,
+) -> Vec<ToolDef> {
+    let mut spec = CrudSpec::new(
+        Domain::Dns,
+        singular,
+        plural,
+        label,
+        "unbound/settings",
+        wrapper,
+        commands,
+    );
     spec.fields = fields;
     spec.required = required.to_vec();
     spec.reconfigure = RECONFIGURE.to_vec();
@@ -127,17 +208,32 @@ pub fn tools() -> Vec<ToolDef> {
         cmds!("host_override"),
         "host",
         vec![
-            schema::string("hostname").opt().desc("Host part. Use * for a wildcard."),
+            schema::string("hostname")
+                .opt()
+                .desc("Host part. Use * for a wildcard."),
             schema::string("domain").opt().desc("Domain part."),
-            schema::enumeration("rr", &["A", "AAAA", "MX", "TXT"]).opt().desc("Record type."),
-            schema::string("server").opt().desc("Address to answer with, for A and AAAA."),
+            schema::enumeration("rr", &["A", "AAAA", "MX", "TXT"])
+                .opt()
+                .desc("Record type."),
+            schema::string("server")
+                .opt()
+                .desc("Address to answer with, for A and AAAA."),
             schema::string("mx").opt().desc("Mail host, for MX."),
-            schema::integer("mxprio").opt().min(0).desc("Priority, for MX."),
+            schema::integer("mxprio")
+                .opt()
+                .min(0)
+                .desc("Priority, for MX."),
             schema::string("txtdata").opt().desc("Content, for TXT."),
             schema::integer("ttl").opt().min(0).desc("TTL in seconds."),
-            schema::boolean("addptr").opt().desc("Also answer the reverse lookup."),
-            schema::string("description").opt().desc("Free-text description."),
-            schema::boolean("enabled").opt().desc("Default true on creation."),
+            schema::boolean("addptr")
+                .opt()
+                .desc("Also answer the reverse lookup."),
+            schema::string("description")
+                .opt()
+                .desc("Free-text description."),
+            schema::boolean("enabled")
+                .opt()
+                .desc("Default true on creation."),
         ],
         &["domain", "rr"],
         None,
@@ -156,7 +252,11 @@ pub fn tools() -> Vec<ToolDef> {
     ));
     // Même modèle que les forwards : le pare-feu les distingue par le point d'accès utilisé, et chacun fixe le type.
     let mut dot_fields = forward_fields();
-    dot_fields.push(schema::string("verify").opt().desc("Name to verify on the certificate of the server."));
+    dot_fields.push(
+        schema::string("verify")
+            .opt()
+            .desc("Name to verify on the certificate of the server."),
+    );
     defs.extend(crud(
         "dot_server",
         "dot_servers",
@@ -168,8 +268,18 @@ pub fn tools() -> Vec<ToolDef> {
         None,
         "Goes live when Unbound reconfigures, with no rollback timer. A wrong server can break name resolution for the whole network.",
     ));
-    defs.push(grid_list("opn_list_dns_host_aliases", "List DNS host aliases", "Additional names pointing at a DNS host override.", "unbound/settings/search_host_alias"));
-    defs.push(grid_list("opn_list_dns_acls", "List DNS access lists", "Unbound access lists: which networks may query the resolver.", "unbound/settings/search_acl"));
+    defs.push(grid_list(
+        "opn_list_dns_host_aliases",
+        "List DNS host aliases",
+        "Additional names pointing at a DNS host override.",
+        "unbound/settings/search_host_alias",
+    ));
+    defs.push(grid_list(
+        "opn_list_dns_acls",
+        "List DNS access lists",
+        "Unbound access lists: which networks may query the resolver.",
+        "unbound/settings/search_acl",
+    ));
     defs.push(
         read_tool("opn_dns_stats", "DNS resolver statistics", "Unbound counters: queries, cache hits, answers by type. They restart from zero when Unbound restarts.", Domain::Dns)
             .run(|_args, ctx| async move { ctx.api.get_("unbound/diagnostics/stats").await }),
@@ -222,11 +332,33 @@ pub fn tools() -> Vec<ToolDef> {
     );
 
     // ---- Listes de blocage DNS ----
-    defs.push(grid_list("opn_list_dnsbl", "List DNS blocklists", "DNS blocklist policies, with the lists they use and the networks they apply to.", "unbound/settings/search_dnsbl"));
+    defs.push(grid_list(
+        "opn_list_dnsbl",
+        "List DNS blocklists",
+        "DNS blocklist policies, with the lists they use and the networks they apply to.",
+        "unbound/settings/search_dnsbl",
+    ));
     defs.push(
-        read_tool("opn_get_dnsbl", "Get DNS blocklist", "Every field of one DNS blocklist policy, including its allowlist.", Domain::Dns).input(vec![uuid()]).run(|args, ctx| async move {
-            let res = ctx.api.get("unbound/settings/get_dnsbl", RequestOptions::new().param(args.req("uuid"))).await?;
-            let form = res.get("blocklist").filter(|v| !v.is_null()).cloned().unwrap_or(res);
+        read_tool(
+            "opn_get_dnsbl",
+            "Get DNS blocklist",
+            "Every field of one DNS blocklist policy, including its allowlist.",
+            Domain::Dns,
+        )
+        .input(vec![uuid()])
+        .run(|args, ctx| async move {
+            let res = ctx
+                .api
+                .get(
+                    "unbound/settings/get_dnsbl",
+                    RequestOptions::new().param(args.req("uuid")),
+                )
+                .await?;
+            let form = res
+                .get("blocklist")
+                .filter(|v| !v.is_null())
+                .cloned()
+                .unwrap_or(res);
             Ok(json!({ "uuid": args.req("uuid"), "blocklist": flatten_model(&form) }))
         }),
     );
@@ -351,23 +483,37 @@ mod tests {
 
     #[test]
     fn split_handles_commas_newlines_and_empty() {
-        assert_eq!(split_list(&json!("a.com, b.com\nc.com,,")), vec!["a.com", "b.com", "c.com"]);
+        assert_eq!(
+            split_list(&json!("a.com, b.com\nc.com,,")),
+            vec!["a.com", "b.com", "c.com"]
+        );
         assert!(split_list(&Value::Null).is_empty());
     }
 
     #[test]
     fn domains_are_validated() {
         let s = crate::schema::Schema::new(vec![domain_list()]);
-        assert!(s.validate(&json!({ "domains": ["a.example.com", "*.x.org"] })).is_ok());
+        assert!(s
+            .validate(&json!({ "domains": ["a.example.com", "*.x.org"] }))
+            .is_ok());
         assert!(s.validate(&json!({ "domains": ["bad domain"] })).is_err());
-        assert!(s.validate(&json!({ "domains": ["a".repeat(254)] })).is_err());
+        assert!(s
+            .validate(&json!({ "domains": ["a".repeat(254)] }))
+            .is_err());
     }
 
     #[test]
     fn tool_names_and_access() {
         let t = tools();
-        let find = |n: &str| t.iter().find(|d| d.name == n).unwrap_or_else(|| panic!("missing {n}"));
-        assert_eq!(find("opn_remove_dnsbl_allowlist").access, ToolAccess::Destructive);
+        let find = |n: &str| {
+            t.iter()
+                .find(|d| d.name == n)
+                .unwrap_or_else(|| panic!("missing {n}"))
+        };
+        assert_eq!(
+            find("opn_remove_dnsbl_allowlist").access,
+            ToolAccess::Destructive
+        );
         assert!(find("opn_update_dnsbl").open_world);
         assert_eq!(find("opn_toggle_dot_server").access, ToolAccess::Write);
         assert!(find("opn_dns_query_log").input.has("client"));

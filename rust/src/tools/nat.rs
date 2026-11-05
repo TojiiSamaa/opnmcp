@@ -8,7 +8,8 @@ use crate::tool::{crud_tools, paging, read_tool, Commands, CrudSpec, Ctx, Domain
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-const ADDRESS_HELP: &str = "any, an address, a CIDR, an alias name, an interface network (lan) or address (wanip).";
+const ADDRESS_HELP: &str =
+    "any, an address, a CIDR, an alias name, an interface network (lan) or address (wanip).";
 
 /// Les modes où le pare-feu charge les règles sortantes manuelles.
 const MANUAL_OUTBOUND_MODES: [&str; 2] = ["hybrid", "advanced"];
@@ -38,20 +39,38 @@ fn port_forward_fields() -> Vec<Field> {
 
 /// Sous-objet {network, port, not} de la source ou de la destination, absent s'il est vide.
 fn nested(input: &Obj, net: &str, port: &str, not: &str) -> Option<Value> {
-    let probe: Obj = [("network", net), ("port", port), ("not", not)].into_iter().filter_map(|(out, key)| input.get(key).map(|v| (out.to_string(), v.clone()))).collect();
+    let probe: Obj = [("network", net), ("port", port), ("not", not)]
+        .into_iter()
+        .filter_map(|(out, key)| input.get(key).map(|v| (out.to_string(), v.clone())))
+        .collect();
     let out = model_fields(&probe);
     (!out.is_empty()).then_some(Value::Object(out))
 }
 
 fn to_port_forward_model(args: &Obj) -> Obj {
-    let renamed = [("ip_protocol", "ipprotocol"), ("target_port", "local-port"), ("description", "descr")];
-    let consumed = ["source_net", "source_port", "source_not", "destination_net", "destination_port", "destination_not", "enabled"];
+    let renamed = [
+        ("ip_protocol", "ipprotocol"),
+        ("target_port", "local-port"),
+        ("description", "descr"),
+    ];
+    let consumed = [
+        "source_net",
+        "source_port",
+        "source_not",
+        "destination_net",
+        "destination_port",
+        "destination_not",
+        "enabled",
+    ];
     let mut plain = Obj::new();
     for (k, v) in args {
         if consumed.contains(&k.as_str()) {
             continue;
         }
-        let name = renamed.iter().find(|(from, _)| from == k).map_or(k.as_str(), |(_, to)| *to);
+        let name = renamed
+            .iter()
+            .find(|(from, _)| from == k)
+            .map_or(k.as_str(), |(_, to)| *to);
         plain.insert(name.to_string(), v.clone());
     }
     if let Some(Value::Bool(enabled)) = args.get("enabled") {
@@ -61,7 +80,12 @@ fn to_port_forward_model(args: &Obj) -> Obj {
     if let Some(source) = nested(args, "source_net", "source_port", "source_not") {
         out.insert("source".into(), source);
     }
-    if let Some(destination) = nested(args, "destination_net", "destination_port", "destination_not") {
+    if let Some(destination) = nested(
+        args,
+        "destination_net",
+        "destination_port",
+        "destination_not",
+    ) {
         out.insert("destination".into(), destination);
     }
     out
@@ -69,27 +93,65 @@ fn to_port_forward_model(args: &Obj) -> Obj {
 
 fn outbound_fields() -> Vec<Field> {
     vec![
-        schema::string("interface").opt().desc("Outgoing interface, usually wan."),
-        schema::enumeration("ip_protocol", &["inet", "inet6"]).opt().desc("inet = IPv4, inet6 = IPv6."),
+        schema::string("interface")
+            .opt()
+            .desc("Outgoing interface, usually wan."),
+        schema::enumeration("ip_protocol", &["inet", "inet6"])
+            .opt()
+            .desc("inet = IPv4, inet6 = IPv6."),
         schema::string("protocol").opt().desc("any, TCP, UDP..."),
-        schema::string("source_net").opt().desc(&format!("Internal source: {ADDRESS_HELP}")),
-        schema::boolean("source_not").opt().desc("Invert the source match."),
+        schema::string("source_net")
+            .opt()
+            .desc(&format!("Internal source: {ADDRESS_HELP}")),
+        schema::boolean("source_not")
+            .opt()
+            .desc("Invert the source match."),
         schema::string("source_port").opt().desc("Source port."),
-        schema::string("destination_net").opt().desc(&format!("Destination: {ADDRESS_HELP}")),
-        schema::boolean("destination_not").opt().desc("Invert the destination match."),
-        schema::string("destination_port").opt().desc("Destination port."),
-        schema::string("target").opt().desc("Address to translate to, for example wanip."),
-        schema::string("target_port").opt().desc("Port to translate to."),
-        schema::boolean("nonat").opt().desc("Exempt this traffic from NAT."),
-        schema::boolean("staticnatport").opt().desc("Keep the source port."),
+        schema::string("destination_net")
+            .opt()
+            .desc(&format!("Destination: {ADDRESS_HELP}")),
+        schema::boolean("destination_not")
+            .opt()
+            .desc("Invert the destination match."),
+        schema::string("destination_port")
+            .opt()
+            .desc("Destination port."),
+        schema::string("target")
+            .opt()
+            .desc("Address to translate to, for example wanip."),
+        schema::string("target_port")
+            .opt()
+            .desc("Port to translate to."),
+        schema::boolean("nonat")
+            .opt()
+            .desc("Exempt this traffic from NAT."),
+        schema::boolean("staticnatport")
+            .opt()
+            .desc("Keep the source port."),
         schema::boolean("log").opt().desc("Log matching packets."),
-        schema::string("description").opt().desc("Free-text description."),
-        schema::boolean("enabled").opt().desc("Default true on creation."),
+        schema::string("description")
+            .opt()
+            .desc("Free-text description."),
+        schema::boolean("enabled")
+            .opt()
+            .desc("Default true on creation."),
     ]
 }
 
 fn to_outbound_model(args: &Obj) -> Obj {
-    let renamed: Obj = args.iter().map(|(k, v)| (if k == "ip_protocol" { "ipprotocol".to_string() } else { k.clone() }, v.clone())).collect();
+    let renamed: Obj = args
+        .iter()
+        .map(|(k, v)| {
+            (
+                if k == "ip_protocol" {
+                    "ipprotocol".to_string()
+                } else {
+                    k.clone()
+                },
+                v.clone(),
+            )
+        })
+        .collect();
     model_fields(&renamed)
 }
 
@@ -117,7 +179,14 @@ pub fn tools() -> Vec<ToolDef> {
         "port forward (destination NAT) rule",
         "firewall/d_nat",
         "rule",
-        Commands { search: "search_rule", get: "get_rule", add: Some("add_rule"), set: Some("set_rule"), del: Some("del_rule"), toggle: Some("toggle_rule") },
+        Commands {
+            search: "search_rule",
+            get: "get_rule",
+            add: Some("add_rule"),
+            set: Some("set_rule"),
+            del: Some("del_rule"),
+            toggle: Some("toggle_rule"),
+        },
     );
     dnat.fields = port_forward_fields();
     dnat.required = vec!["interface", "protocol", "destination_port", "target"];
@@ -135,14 +204,23 @@ pub fn tools() -> Vec<ToolDef> {
         "outbound (source NAT) rule",
         "firewall/source_nat",
         "rule",
-        Commands { search: "search_rule", get: "get_rule", add: Some("add_rule"), set: Some("set_rule"), del: Some("del_rule"), toggle: Some("toggle_rule") },
+        Commands {
+            search: "search_rule",
+            get: "get_rule",
+            add: Some("add_rule"),
+            set: Some("set_rule"),
+            del: Some("del_rule"),
+            toggle: Some("toggle_rule"),
+        },
     );
     snat.fields = outbound_fields();
     snat.required = vec!["interface"];
     snat.to_model = Some(Arc::new(to_outbound_model));
     // Même modèle que les règles de filtre : le point de sauvegarde natif le couvre.
     snat.staged = Some(ChangeScope::Filter);
-    snat.list_note = Some("Manual rules only take effect in hybrid or advanced mode: see opn_get_outbound_nat_mode.");
+    snat.list_note = Some(
+        "Manual rules only take effect in hybrid or advanced mode: see opn_get_outbound_nat_mode.",
+    );
     snat.warn_on_write = Some(Arc::new(|ctx| {
         Box::pin(async move {
             // Les pare-feu anciens n'ont pas ce point d'accès : se taire plutôt que faire échouer une écriture réussie.
@@ -168,9 +246,18 @@ pub fn tools() -> Vec<ToolDef> {
         }),
     );
     defs.push(
-        read_tool("opn_list_one_to_one_nat_rules", "List 1:1 NAT rules", "List 1:1 NAT rules. To change one, see opn_search_api and opn_api_write.", Domain::Nat)
-            .input(paging())
-            .run(|args, ctx| async move { Ok(compact_grid(&search_grid(&ctx.api, "firewall/one_to_one/search_rule", &args.grid()).await?)) }),
+        read_tool(
+            "opn_list_one_to_one_nat_rules",
+            "List 1:1 NAT rules",
+            "List 1:1 NAT rules. To change one, see opn_search_api and opn_api_write.",
+            Domain::Nat,
+        )
+        .input(paging())
+        .run(|args, ctx| async move {
+            Ok(compact_grid(
+                &search_grid(&ctx.api, "firewall/one_to_one/search_rule", &args.grid()).await?,
+            ))
+        }),
     );
     defs.push(
         read_tool("opn_list_npt_rules", "List NPTv6 rules", "List NPTv6 (IPv6 prefix translation) rules. To change one, see opn_search_api and opn_api_write.", Domain::Nat)
@@ -198,17 +285,30 @@ mod tests {
         assert_eq!(m["local-port"], "8443");
         assert_eq!(m["descr"], "web");
         assert_eq!(m["disabled"], "0");
-        assert_eq!(m["destination"], json!({ "network": "wanip", "port": "443" }));
+        assert_eq!(
+            m["destination"],
+            json!({ "network": "wanip", "port": "443" })
+        );
         assert_eq!(m["source"], json!({ "not": "1" }));
         assert!(m.get("target_port").is_none() && m.get("enabled").is_none());
-        assert_eq!(to_port_forward_model(&obj(json!({ "enabled": false })))["disabled"], "1");
-        assert!(to_port_forward_model(&obj(json!({ "target": "x" }))).get("source").is_none());
+        assert_eq!(
+            to_port_forward_model(&obj(json!({ "enabled": false })))["disabled"],
+            "1"
+        );
+        assert!(to_port_forward_model(&obj(json!({ "target": "x" })))
+            .get("source")
+            .is_none());
     }
 
     #[test]
     fn outbound_model_renames_protocol_family_and_stringifies() {
-        let m = to_outbound_model(&obj(json!({ "ip_protocol": "inet6", "nonat": true, "interface": "wan" })));
-        assert_eq!(Value::Object(m), json!({ "ipprotocol": "inet6", "nonat": "1", "interface": "wan" }));
+        let m = to_outbound_model(&obj(
+            json!({ "ip_protocol": "inet6", "nonat": true, "interface": "wan" }),
+        ));
+        assert_eq!(
+            Value::Object(m),
+            json!({ "ipprotocol": "inet6", "nonat": "1", "interface": "wan" })
+        );
     }
 
     #[test]
@@ -221,10 +321,19 @@ mod tests {
     fn nat_rule_tools_follow_inverted_staged_spec() {
         let t = tools();
         let names: Vec<&str> = t.iter().map(|d| d.name.as_str()).collect();
-        for n in ["opn_add_nat_rule", "opn_toggle_nat_rule", "opn_delete_outbound_nat_rule", "opn_get_outbound_nat_mode", "opn_list_npt_rules"] {
+        for n in [
+            "opn_add_nat_rule",
+            "opn_toggle_nat_rule",
+            "opn_delete_outbound_nat_rule",
+            "opn_get_outbound_nat_mode",
+            "opn_list_npt_rules",
+        ] {
             assert!(names.contains(&n), "missing {n}");
         }
         let add = t.iter().find(|d| d.name == "opn_add_nat_rule").unwrap();
-        assert_eq!(add.input.to_json_schema()["required"], json!(["interface", "protocol", "destination_port", "target"]));
+        assert_eq!(
+            add.input.to_json_schema()["required"],
+            json!(["interface", "protocol", "destination_port", "target"])
+        );
     }
 }

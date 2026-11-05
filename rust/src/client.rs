@@ -178,7 +178,8 @@ const MAX_CONCURRENCY: usize = 4;
 
 static VERSION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d+)\.(\d+)").unwrap());
 static HTML_TYPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)text/html").unwrap());
-static HTML_BODY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^\s*<(!doctype|html)").unwrap());
+static HTML_BODY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^\s*<(!doctype|html)").unwrap());
 
 /// Action en snake_case vers camelCase, comme les pare-feu antérieurs à 25.7 l'attendent.
 pub fn to_camel_action(action: &str) -> String {
@@ -232,16 +233,25 @@ pub struct OpnsenseClient {
 }
 
 fn build_http(config: &InstanceConfig, keep_alive: bool) -> Result<reqwest::Client> {
-    let mut builder = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).user_agent(concat!("osmcp/", env!("CARGO_PKG_VERSION")));
+    let mut builder = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("osmcp/", env!("CARGO_PKG_VERSION")));
     if !keep_alive {
         builder = builder.pool_max_idle_per_host(0);
     } else {
-        builder = builder.pool_max_idle_per_host(MAX_CONCURRENCY).tcp_keepalive(Duration::from_secs(30));
+        builder = builder
+            .pool_max_idle_per_host(MAX_CONCURRENCY)
+            .tcp_keepalive(Duration::from_secs(30));
     }
     if config.url.starts_with("https:") {
         builder = builder.danger_accept_invalid_certs(!config.verify_ssl);
         if let Some(ca) = &config.ca {
-            let certs = reqwest::Certificate::from_pem_bundle(ca.as_bytes()).map_err(|e| OpnError::new(ErrorType::ConfigError, format!("OPNSENSE_CA_FILE: the CA bundle is not valid PEM: {e}")))?;
+            let certs = reqwest::Certificate::from_pem_bundle(ca.as_bytes()).map_err(|e| {
+                OpnError::new(
+                    ErrorType::ConfigError,
+                    format!("OPNSENSE_CA_FILE: the CA bundle is not valid PEM: {e}"),
+                )
+            })?;
             // Comme l'option `ca` de Node : seules ces autorités sont de confiance.
             builder = builder.tls_built_in_root_certs(false);
             for cert in certs {
@@ -249,12 +259,26 @@ fn build_http(config: &InstanceConfig, keep_alive: bool) -> Result<reqwest::Clie
             }
         }
     }
-    builder.build().map_err(|e| OpnError::new(ErrorType::ConfigError, format!("Cannot build the HTTP client: {e}")))
+    builder.build().map_err(|e| {
+        OpnError::new(
+            ErrorType::ConfigError,
+            format!("Cannot build the HTTP client: {e}"),
+        )
+    })
 }
 
 impl OpnsenseClient {
-    pub fn new(config: Arc<InstanceConfig>, unblocked: Vec<String>, on_write: Option<WriteHook>) -> Result<Self> {
-        let base = url::Url::parse(&config.url).map_err(|_| OpnError::new(ErrorType::ConfigError, format!("{} is not a valid URL.", config.url)))?;
+    pub fn new(
+        config: Arc<InstanceConfig>,
+        unblocked: Vec<String>,
+        on_write: Option<WriteHook>,
+    ) -> Result<Self> {
+        let base = url::Url::parse(&config.url).map_err(|_| {
+            OpnError::new(
+                ErrorType::ConfigError,
+                format!("{} is not a valid URL.", config.url),
+            )
+        })?;
         let http = build_http(&config, true)?;
         Ok(Self {
             config,
@@ -281,7 +305,12 @@ impl OpnsenseClient {
         self.request(Method::Get, path, opts).await
     }
 
-    pub async fn post(&self, path: &str, body: Option<Value>, mut opts: RequestOptions) -> Result<Value> {
+    pub async fn post(
+        &self,
+        path: &str,
+        body: Option<Value>,
+        mut opts: RequestOptions,
+    ) -> Result<Value> {
         opts.body = body;
         self.request(Method::Post, path, opts).await
     }
@@ -293,8 +322,19 @@ impl OpnsenseClient {
             full_path.push('/');
             full_path.push_str(p);
         }
-        let subject = PolicySubject { name: &self.config.name, allow_writes: self.config.allow_writes, allow_sensitive: self.config.allow_sensitive, dry_run: self.config.dry_run };
-        let decision = authorize(&subject, &full_path, method == Method::Get, &self.unblocked, opts.auth)?;
+        let subject = PolicySubject {
+            name: &self.config.name,
+            allow_writes: self.config.allow_writes,
+            allow_sensitive: self.config.allow_sensitive,
+            dry_run: self.config.dry_run,
+        };
+        let decision = authorize(
+            &subject,
+            &full_path,
+            method == Method::Get,
+            &self.unblocked,
+            opts.auth,
+        )?;
         if let Some(body) = &opts.body {
             assert_no_redacted_value(body, path)?;
         }
@@ -308,12 +348,19 @@ impl OpnsenseClient {
         let mut response = match self.send(method, &styled, &opts).await {
             Ok(r) => r,
             Err(e) => {
-                self.audit_write(&decision, method, &full_path, opts.body.as_ref(), format!("error: {}", e.message));
+                self.audit_write(
+                    &decision,
+                    method,
+                    &full_path,
+                    opts.body.as_ref(),
+                    format!("error: {}", e.message),
+                );
                 return Err(e);
             }
         };
         // Version inconnue : un 404 en snake_case peut venir d'un pare-feu antérieur à 25.7.
-        if response.status == 404 && caps.version.is_none() && caps.api_style == ApiStyle::SnakeCase {
+        if response.status == 404 && caps.version.is_none() && caps.api_style == ApiStyle::SnakeCase
+        {
             let camel = styled_path(&full_path, ApiStyle::CamelCase);
             if camel != full_path {
                 let retried = self.send(method, &camel, &opts).await?;
@@ -325,7 +372,13 @@ impl OpnsenseClient {
                 }
             }
         }
-        self.audit_write(&decision, method, &full_path, opts.body.as_ref(), response.status.to_string());
+        self.audit_write(
+            &decision,
+            method,
+            &full_path,
+            opts.body.as_ref(),
+            response.status.to_string(),
+        );
         self.parse(&response, &full_path, method, &decision, &opts)
     }
 
@@ -351,11 +404,28 @@ impl OpnsenseClient {
     }
 
     async fn detect_capabilities(&self) -> Result<Capabilities> {
-        let unknown = Capabilities { version: None, major: None, minor: None, api_style: ApiStyle::SnakeCase, native_savepoints: None };
-        let response = match self.send(Method::Get, "core/firmware/status", &RequestOptions::new()).await {
+        let unknown = Capabilities {
+            version: None,
+            major: None,
+            minor: None,
+            api_style: ApiStyle::SnakeCase,
+            native_savepoints: None,
+        };
+        let response = match self
+            .send(Method::Get, "core/firmware/status", &RequestOptions::new())
+            .await
+        {
             Ok(r) => r,
             // Les pannes de connexion et de TLS concernent tous les appels : l'appelant doit les voir tout de suite.
-            Err(e) if e.is_any(&[ErrorType::Unreachable, ErrorType::Timeout, ErrorType::TlsError]) => return Err(e),
+            Err(e)
+                if e.is_any(&[
+                    ErrorType::Unreachable,
+                    ErrorType::Timeout,
+                    ErrorType::TlsError,
+                ]) =>
+            {
+                return Err(e)
+            }
             Err(_) => return Ok(unknown),
         };
         if response.status == 401 {
@@ -364,45 +434,88 @@ impl OpnsenseClient {
         if response.status != 200 {
             return Ok(unknown);
         }
-        let Ok(body) = serde_json::from_str::<Value>(&response.body) else { return Ok(unknown) };
+        let Ok(body) = serde_json::from_str::<Value>(&response.body) else {
+            return Ok(unknown);
+        };
         // OPNsense 26.x l'imbrique sous "product" ; les versions plus anciennes l'ont au niveau supérieur.
-        let version = body.pointer("/product/product_version").or_else(|| body.get("product_version")).and_then(Value::as_str);
-        let Some(version) = version else { return Ok(unknown) };
-        let Some((major, minor)) = parse_version(version) else { return Ok(Capabilities { version: Some(version.to_string()), ..unknown }) };
+        let version = body
+            .pointer("/product/product_version")
+            .or_else(|| body.get("product_version"))
+            .and_then(Value::as_str);
+        let Some(version) = version else {
+            return Ok(unknown);
+        };
+        let Some((major, minor)) = parse_version(version) else {
+            return Ok(Capabilities {
+                version: Some(version.to_string()),
+                ..unknown
+            });
+        };
         Ok(Capabilities {
             version: Some(version.to_string()),
             major: Some(major),
             minor: Some(minor),
             // Les motifs d'ACL sont sensibles à la casse et suivent cette convention : un utilisateur restreint
             // reçoit un 403 avec le mauvais style même si le routeur accepterait les deux.
-            api_style: if at_least(major, minor, 25, 7) { ApiStyle::SnakeCase } else { ApiStyle::CamelCase },
+            api_style: if at_least(major, minor, 25, 7) {
+                ApiStyle::SnakeCase
+            } else {
+                ApiStyle::CamelCase
+            },
             native_savepoints: Some(!at_least(major, minor, 26, 7)),
         })
     }
 
     fn simulate_write(&self, method: Method, path: &str, opts: &RequestOptions) -> Value {
         if let Some(log) = &opts.dry_run_log {
-            log.lock().unwrap().push(DryRunEntry { method, path: path.to_string(), body: opts.body.as_ref().map(redact_json) });
+            log.lock().unwrap().push(DryRunEntry {
+                method,
+                path: path.to_string(),
+                body: opts.body.as_ref().map(redact_json),
+            });
         }
         json!({ "result": "saved", "status": "ok", "uuid": DRY_RUN_UUID, "dry_run": true })
     }
 
-    fn audit_write(&self, decision: &Decision, method: Method, path: &str, body: Option<&Value>, status: String) {
+    fn audit_write(
+        &self,
+        decision: &Decision,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+        status: String,
+    ) {
         if decision.access != Access::Write {
             return;
         }
         if let Some(hook) = &self.on_write {
-            hook(WriteRecord { method, path: path.to_string(), body: body.map(redact_json), status });
+            hook(WriteRecord {
+                method,
+                path: path.to_string(),
+                body: body.map(redact_json),
+                status,
+            });
         }
     }
 
-    fn parse(&self, response: &RawResponse, path: &str, method: Method, decision: &Decision, opts: &RequestOptions) -> Result<Value> {
+    fn parse(
+        &self,
+        response: &RawResponse,
+        path: &str,
+        method: Method,
+        decision: &Decision,
+        opts: &RequestOptions,
+    ) -> Result<Value> {
         if !(200..300).contains(&response.status) {
             return Err(self.status_error(response, path));
         }
         let keep_secrets = opts.include_sensitive && self.config.allow_sensitive;
         if opts.text {
-            let text = if keep_secrets || opts.auth.redacted_by_caller { response.body.clone() } else { scrub_text(&response.body) };
+            let text = if keep_secrets || opts.auth.redacted_by_caller {
+                response.body.clone()
+            } else {
+                scrub_text(&response.body)
+            };
             return Ok(Value::String(text));
         }
         if HTML_TYPE.is_match(&response.content_type) || HTML_BODY.is_match(&response.body) {
@@ -417,19 +530,37 @@ impl OpnsenseClient {
                 Err(_) => {
                     // Les exports répondent en CSV ou en texte brut même sans l'option text.
                     if decision.sensitive || method == Method::Get {
-                        let text = if keep_secrets { response.body.clone() } else { scrub_text(&response.body) };
+                        let text = if keep_secrets {
+                            response.body.clone()
+                        } else {
+                            scrub_text(&response.body)
+                        };
                         return Ok(json!({ "text": text }));
                     }
-                    return Err(OpnError::new(ErrorType::BadResponse, format!("The firewall returned invalid JSON for {path}.")));
+                    return Err(OpnError::new(
+                        ErrorType::BadResponse,
+                        format!("The firewall returned invalid JSON for {path}."),
+                    ));
                 }
             }
         };
-        Ok(if keep_secrets { json } else { redact_json(&json) })
+        Ok(if keep_secrets {
+            json
+        } else {
+            redact_json(&json)
+        })
     }
 
     fn status_error(&self, response: &RawResponse, path: &str) -> OpnError {
         let status = response.status;
-        let message = serde_json::from_str::<Value>(&response.body).ok().and_then(|b| b.get("message").or_else(|| b.get("errorMessage")).and_then(Value::as_str).map(scrub_text));
+        let message = serde_json::from_str::<Value>(&response.body)
+            .ok()
+            .and_then(|b| {
+                b.get("message")
+                    .or_else(|| b.get("errorMessage"))
+                    .and_then(Value::as_str)
+                    .map(scrub_text)
+            });
         let detail = message.map(|m| format!(" ({m})")).unwrap_or_default();
         match status {
             401 => OpnError::new(ErrorType::AuthFailed, format!("The firewall rejected the API credentials{detail}."))
@@ -454,14 +585,21 @@ impl OpnsenseClient {
     }
 
     async fn send(&self, method: Method, path: &str, opts: &RequestOptions) -> Result<RawResponse> {
-        let _permit = self.semaphore.acquire().await.map_err(|_| OpnError::new(ErrorType::InternalError, "the request queue was closed"))?;
+        let _permit =
+            self.semaphore.acquire().await.map_err(|_| {
+                OpnError::new(ErrorType::InternalError, "the request queue was closed")
+            })?;
         // Seules les lectures sont rejouées : répéter une écriture peut-être passée n'est pas sûr.
-        let attempts = if method == Method::Get { MAX_RETRIES + 1 } else { 1 };
+        let attempts = if method == Method::Get {
+            MAX_RETRIES + 1
+        } else {
+            1
+        };
         let mut attempt = 1;
         loop {
             match self.send_once(method, path, opts).await {
                 Ok(r) => {
-                    if attempt < attempts && matches!(r.status, 502 | 503 | 504) {
+                    if attempt < attempts && matches!(r.status, 502..=504) {
                         tokio::time::sleep(Duration::from_millis(attempt as u64 * 300)).await;
                         attempt += 1;
                         continue;
@@ -480,12 +618,18 @@ impl OpnsenseClient {
         }
     }
 
-    async fn send_once(&self, method: Method, path: &str, opts: &RequestOptions) -> Result<RawResponse> {
+    async fn send_once(
+        &self,
+        method: Method,
+        path: &str,
+        opts: &RequestOptions,
+    ) -> Result<RawResponse> {
         let mut url = self.base.clone();
         let base_path = self.base.path().trim_end_matches('/');
         url.set_path(&format!("{base_path}/api/{path}"));
         if !opts.query.is_empty() {
-            url.query_pairs_mut().extend_pairs(opts.query.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+            url.query_pairs_mut()
+                .extend_pairs(opts.query.iter().map(|(k, v)| (k.as_str(), v.as_str())));
         }
         let timeout = Duration::from_millis(opts.timeout_ms.unwrap_or(self.config.timeout_ms));
         let fresh;
@@ -504,19 +648,38 @@ impl OpnsenseClient {
         .timeout(timeout);
         if method == Method::Post {
             // Un type JSON avec un corps vide fait répondre 400 « Invalid JSON syntax » à OPNsense.
-            let payload = serde_json::to_string(opts.body.as_ref().unwrap_or(&json!({}))).unwrap_or_else(|_| "{}".into());
+            let payload = serde_json::to_string(opts.body.as_ref().unwrap_or(&json!({})))
+                .unwrap_or_else(|_| "{}".into());
             req = req.header("Content-Type", "application/json").body(payload);
         }
-        let response = req.send().await.map_err(|e| self.network_error(&e, path, timeout))?;
+        let response = req
+            .send()
+            .await
+            .map_err(|e| self.network_error(&e, path, timeout))?;
         let status = response.status().as_u16();
-        let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
         let remote = response.remote_addr();
-        let bytes = response.bytes().await.map_err(|e| self.network_error(&e, path, timeout))?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| self.network_error(&e, path, timeout))?;
         if let Some(remote) = remote {
             let local = local_address_towards(remote);
-            *self.addresses.lock().unwrap() = (local.or_else(|| self.addresses.lock().unwrap().0.clone()), Some(remote.ip().to_string()));
+            *self.addresses.lock().unwrap() = (
+                local.or_else(|| self.addresses.lock().unwrap().0.clone()),
+                Some(remote.ip().to_string()),
+            );
         }
-        Ok(RawResponse { status, content_type, body: String::from_utf8_lossy(&bytes).into_owned() })
+        Ok(RawResponse {
+            status,
+            content_type,
+            body: String::from_utf8_lossy(&bytes).into_owned(),
+        })
     }
 
     fn network_error(&self, err: &reqwest::Error, path: &str, timeout: Duration) -> OpnError {
@@ -532,7 +695,17 @@ impl OpnsenseClient {
         }
         let joined = chain.join(": ").to_lowercase();
         let leaf = chain.last().cloned().unwrap_or_default();
-        if ["certificate", "tls", "ssl", "handshake", "unknownissuer", "invalid peer"].iter().any(|k| joined.contains(k)) {
+        if [
+            "certificate",
+            "tls",
+            "ssl",
+            "handshake",
+            "unknownissuer",
+            "invalid peer",
+        ]
+        .iter()
+        .any(|k| joined.contains(k))
+        {
             return OpnError::new(ErrorType::TlsError, format!("The TLS certificate of {} was refused ({leaf}).", self.config.url))
                 .hint("OPNsense uses a self-signed certificate by default. Point OPNSENSE_CA_FILE at the certificate to keep verification on, or set OPNSENSE_VERIFY_SSL=false on a trusted network.");
         }
@@ -549,7 +722,11 @@ impl PostClient for OpnsenseClient {
 
 /// Adresse locale que le système choisirait pour joindre `remote` (aucun paquet n'est envoyé).
 fn local_address_towards(remote: SocketAddr) -> Option<String> {
-    let bind = if remote.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
+    let bind = if remote.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    };
     let socket = UdpSocket::bind(bind).ok()?;
     socket.connect(remote).ok()?;
     Some(socket.local_addr().ok()?.ip().to_string())
@@ -589,7 +766,13 @@ mod tests {
 
     #[test]
     fn styled_only_renames_the_action() {
-        assert_eq!(styled_path("firewall/d_nat/search_rule", ApiStyle::CamelCase), "firewall/d_nat/searchRule");
-        assert_eq!(styled_path("firewall/d_nat/search_rule", ApiStyle::SnakeCase), "firewall/d_nat/search_rule");
+        assert_eq!(
+            styled_path("firewall/d_nat/search_rule", ApiStyle::CamelCase),
+            "firewall/d_nat/searchRule"
+        );
+        assert_eq!(
+            styled_path("firewall/d_nat/search_rule", ApiStyle::SnakeCase),
+            "firewall/d_nat/search_rule"
+        );
     }
 }

@@ -14,22 +14,74 @@ pub const REDACTED: &str = "[REDACTED]";
 
 static EXACT: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
-        "password", "bcrypt-hash", "sha512-hash", "md5-hash", "nt-hash", "key", "secret", "pre-shared-key", "privatekey", "privkey",
-        "certdata", "shared_secret", "authorizedkeys", "otp_seed", "tls", "keys", "keydata", "simpin", "community", "rocommunity",
-        "rwcommunity", "eab_hmac", "basicauthpass", "dns_kas_authdata", "apikeys", "cookie",
+        "password",
+        "bcrypt-hash",
+        "sha512-hash",
+        "md5-hash",
+        "nt-hash",
+        "key",
+        "secret",
+        "pre-shared-key",
+        "privatekey",
+        "privkey",
+        "certdata",
+        "shared_secret",
+        "authorizedkeys",
+        "otp_seed",
+        "tls",
+        "keys",
+        "keydata",
+        "simpin",
+        "community",
+        "rocommunity",
+        "rwcommunity",
+        "eab_hmac",
+        "basicauthpass",
+        "dns_kas_authdata",
+        "apikeys",
+        "cookie",
     ]
     .into_iter()
     .collect()
 });
 
 const SUBSTRINGS: [&str; 17] = [
-    "password", "passwd", "secret", "credential", "token", "apikey", "api_key", "authkey", "presharedkey", "pre-shared", "psk", "passphrase", "prv",
-    "private_key", "privatekey", "bindpw", "hmac",
+    "password",
+    "passwd",
+    "secret",
+    "credential",
+    "token",
+    "apikey",
+    "api_key",
+    "authkey",
+    "presharedkey",
+    "pre-shared",
+    "psk",
+    "passphrase",
+    "prv",
+    "private_key",
+    "privatekey",
+    "bindpw",
+    "hmac",
 ];
 
 /// Clés qui correspondent à un motif ci-dessus sans porter de secret.
 static NOT_SECRET: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    ["passwordauth", "nopasswd", "pubkey", "publickey", "public-key", "public_key", "password_policy_length", "authtype", "sortkey", "ssh_pubkey", "tokens_max"].into_iter().collect()
+    [
+        "passwordauth",
+        "nopasswd",
+        "pubkey",
+        "publickey",
+        "public-key",
+        "public_key",
+        "password_policy_length",
+        "authtype",
+        "sortkey",
+        "ssh_pubkey",
+        "tokens_max",
+    ]
+    .into_iter()
+    .collect()
 });
 
 pub fn is_sensitive_key(key: &str) -> bool {
@@ -53,8 +105,14 @@ pub fn is_sensitive_key(key: &str) -> bool {
     k.ends_with("key") && !k.contains("pub") && !k.contains("sort")
 }
 
-static PEM_PRIVATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(-----END [A-Z0-9 ]*PRIVATE KEY-----|\z)").unwrap());
-static CONTROL_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]").unwrap());
+static PEM_PRIVATE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(-----END [A-Z0-9 ]*PRIVATE KEY-----|\z)",
+    )
+    .unwrap()
+});
+static CONTROL_CHARS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]").unwrap());
 
 /// Retire le matériel de clé de tout texte libre et supprime les caractères de contrôle.
 pub fn scrub_text(text: &str) -> String {
@@ -85,7 +143,11 @@ pub fn redact_json(value: &Value) -> Value {
         Value::Object(o) => {
             let mut out = Map::with_capacity(o.len());
             for (k, v) in o {
-                let redacted = if is_sensitive_key(k) && !is_empty(v) && !is_model_option(v) { Value::String(REDACTED.into()) } else { redact_json(v) };
+                let redacted = if is_sensitive_key(k) && !is_empty(v) && !is_model_option(v) {
+                    Value::String(REDACTED.into())
+                } else {
+                    redact_json(v)
+                };
                 out.insert(k.clone(), redacted);
             }
             Value::Object(out)
@@ -95,11 +157,17 @@ pub fn redact_json(value: &Value) -> Value {
 }
 
 fn decode_entities(line: &str) -> String {
-    line.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#039;", "'").replace("&#39;", "'")
+    line.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#039;", "'")
+        .replace("&#39;", "'")
 }
 
 static LEADING_TEXT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)[^<\s][^<]*").unwrap());
-static OPEN_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<([A-Za-z0-9_.:-]+)(\s[^<>]*)?>([^<]*)").unwrap());
+static OPEN_TAG: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<([A-Za-z0-9_.:-]+)(\s[^<>]*)?>([^<]*)").unwrap());
 static DIFF_HEADER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(---|\+\+\+|@@)").unwrap());
 
 fn first_char_len(s: &str) -> usize {
@@ -125,13 +193,19 @@ pub fn redact_xml_lines(lines: &[String]) -> Vec<String> {
                 return scrub_text(&line);
             }
             // Le texte avant la première balise appartient à une valeur sur plusieurs lignes, peut-être commencée plus haut.
-            let rest = LEADING_TEXT.replace(&line[lead..], |c: &Captures| format!("{}{}", &c[1], REDACTED)).into_owned();
+            let rest = LEADING_TEXT
+                .replace(&line[lead..], |c: &Captures| {
+                    format!("{}{}", &c[1], REDACTED)
+                })
+                .into_owned();
             let body = format!("{}{}", &line[..lead], rest);
 
             let mut out = String::with_capacity(body.len());
             let mut pos = 0;
             while pos < body.len() {
-                let Some(c) = OPEN_TAG.captures_at(&body, pos) else { break };
+                let Some(c) = OPEN_TAG.captures_at(&body, pos) else {
+                    break;
+                };
                 let m = c.get(0).unwrap();
                 out.push_str(&body[pos..m.start()]);
                 let tag = &c[1];
@@ -139,14 +213,21 @@ pub fn redact_xml_lines(lines: &[String]) -> Vec<String> {
                 let value = &c[3];
                 let close_tag = format!("</{tag}>");
                 let has_close = body[m.end()..].starts_with(&close_tag);
-                let end = if has_close { m.end() + close_tag.len() } else { m.end() };
+                let end = if has_close {
+                    m.end() + close_tag.len()
+                } else {
+                    m.end()
+                };
                 if !is_sensitive_key(tag) || (value.is_empty() && has_close) {
                     out.push_str(&body[m.start()..end]);
                 } else {
                     if !has_close {
                         open_secret = Some(tag.to_string());
                     }
-                    out.push_str(&format!("<{tag}{attrs}>{REDACTED}{}", if has_close { close_tag.as_str() } else { "" }));
+                    out.push_str(&format!(
+                        "<{tag}{attrs}>{REDACTED}{}",
+                        if has_close { close_tag.as_str() } else { "" }
+                    ));
                 }
                 pos = end;
             }
@@ -210,25 +291,41 @@ pub fn redact_config_xml(xml: &str) -> Result<String> {
                     let span = reader.read_to_end(e.name()).map_err(bad)?;
                     if span.start == span.end {
                         // Élément vide : conservé tel quel, attributs compris.
-                        writer.write_event(Event::Start(e)).map_err(|_| bad_xml(message))?;
+                        writer
+                            .write_event(Event::Start(e))
+                            .map_err(|_| bad_xml(message))?;
                     } else {
-                        writer.write_event(Event::Start(BytesStart::new(name.clone()))).map_err(|_| bad_xml(message))?;
-                        writer.write_event(Event::Text(BytesText::from_escaped(REDACTED))).map_err(|_| bad_xml(message))?;
+                        writer
+                            .write_event(Event::Start(BytesStart::new(name.clone())))
+                            .map_err(|_| bad_xml(message))?;
+                        writer
+                            .write_event(Event::Text(BytesText::from_escaped(REDACTED)))
+                            .map_err(|_| bad_xml(message))?;
                     }
-                    writer.write_event(Event::End(BytesEnd::new(name))).map_err(|_| bad_xml(message))?;
+                    writer
+                        .write_event(Event::End(BytesEnd::new(name)))
+                        .map_err(|_| bad_xml(message))?;
                 } else {
-                    writer.write_event(Event::Start(e)).map_err(|_| bad_xml(message))?;
+                    writer
+                        .write_event(Event::Start(e))
+                        .map_err(|_| bad_xml(message))?;
                 }
             }
             Event::Empty(e) => {
                 // fast-xml-parser reconstruit un élément vide en paire ouvrante/fermante.
                 let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
-                writer.write_event(Event::Start(e)).map_err(|_| bad_xml(message))?;
-                writer.write_event(Event::End(BytesEnd::new(name))).map_err(|_| bad_xml(message))?;
+                writer
+                    .write_event(Event::Start(e))
+                    .map_err(|_| bad_xml(message))?;
+                writer
+                    .write_event(Event::End(BytesEnd::new(name)))
+                    .map_err(|_| bad_xml(message))?;
             }
             Event::Text(t) => {
                 let raw = String::from_utf8_lossy(t.as_ref()).into_owned();
-                writer.write_event(Event::Text(BytesText::from_escaped(scrub_text(&raw)))).map_err(|_| bad_xml(message))?;
+                writer
+                    .write_event(Event::Text(BytesText::from_escaped(scrub_text(&raw))))
+                    .map_err(|_| bad_xml(message))?;
             }
             other => writer.write_event(other).map_err(|_| bad_xml(message))?,
         }
@@ -268,28 +365,56 @@ pub fn config_xml_to_json(xml: &str, redact: bool) -> Result<Value> {
     let message = "The configuration returned by the firewall is not valid XML.";
     validate_xml(xml, message)?;
     let mut reader = Reader::from_str(xml);
-    let mut stack: Vec<Node> = vec![Node { name: String::new(), children: vec![], text: String::new() }];
+    let mut stack: Vec<Node> = vec![Node {
+        name: String::new(),
+        children: vec![],
+        text: String::new(),
+    }];
     loop {
         match reader.read_event().map_err(|_| bad_xml(message))? {
             Event::Eof => break,
-            Event::Start(e) => stack.push(Node { name: String::from_utf8_lossy(e.name().as_ref()).into_owned(), children: vec![], text: String::new() }),
+            Event::Start(e) => stack.push(Node {
+                name: String::from_utf8_lossy(e.name().as_ref()).into_owned(),
+                children: vec![],
+                text: String::new(),
+            }),
             Event::Empty(e) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
-                stack.last_mut().ok_or_else(|| bad_xml(message))?.children.push((name, Value::String(String::new())));
+                stack
+                    .last_mut()
+                    .ok_or_else(|| bad_xml(message))?
+                    .children
+                    .push((name, Value::String(String::new())));
             }
             Event::End(_) => {
                 let node = stack.pop().ok_or_else(|| bad_xml(message))?;
                 let name = node.name.clone();
-                stack.last_mut().ok_or_else(|| bad_xml(message))?.children.push((name, finish(node)));
+                stack
+                    .last_mut()
+                    .ok_or_else(|| bad_xml(message))?
+                    .children
+                    .push((name, finish(node)));
             }
-            Event::Text(t) => stack.last_mut().ok_or_else(|| bad_xml(message))?.text.push_str(&String::from_utf8_lossy(t.as_ref())),
-            Event::CData(t) => stack.last_mut().ok_or_else(|| bad_xml(message))?.text.push_str(&String::from_utf8_lossy(t.as_ref())),
+            Event::Text(t) => stack
+                .last_mut()
+                .ok_or_else(|| bad_xml(message))?
+                .text
+                .push_str(&String::from_utf8_lossy(t.as_ref())),
+            Event::CData(t) => stack
+                .last_mut()
+                .ok_or_else(|| bad_xml(message))?
+                .text
+                .push_str(&String::from_utf8_lossy(t.as_ref())),
             _ => {}
         }
     }
     let doc = finish(stack.pop().ok_or_else(|| bad_xml(message))?);
     let root = match &doc {
-        Value::Object(o) => o.get("opnsense").or_else(|| o.get("pfsense")).cloned().unwrap_or_else(|| doc.clone()),
+        Value::Object(o) => o
+            .get("opnsense")
+            .or_else(|| o.get("pfsense"))
+            .cloned()
+            .unwrap_or_else(|| doc.clone()),
         _ => doc.clone(),
     };
     Ok(if redact { redact_json(&root) } else { root })
@@ -302,10 +427,25 @@ mod tests {
 
     #[test]
     fn sensitive_keys() {
-        for k in ["password", "api_secret", "psk", "pre-shared-key", "otp_uri", "bindpw", "admin_pass", "hmac_key"] {
+        for k in [
+            "password",
+            "api_secret",
+            "psk",
+            "pre-shared-key",
+            "otp_uri",
+            "bindpw",
+            "admin_pass",
+            "hmac_key",
+        ] {
             assert!(is_sensitive_key(k), "{k}");
         }
-        for k in ["pubkey", "description", "sortkey", "passwordauth", "interface"] {
+        for k in [
+            "pubkey",
+            "description",
+            "sortkey",
+            "passwordauth",
+            "interface",
+        ] {
             assert!(!is_sensitive_key(k), "{k}");
         }
     }
@@ -322,7 +462,9 @@ mod tests {
 
     #[test]
     fn pem_and_control_chars() {
-        let s = scrub_text("a\u{0007}b -----BEGIN RSA PRIVATE KEY-----\nAAA\n-----END RSA PRIVATE KEY----- c");
+        let s = scrub_text(
+            "a\u{0007}b -----BEGIN RSA PRIVATE KEY-----\nAAA\n-----END RSA PRIVATE KEY----- c",
+        );
         assert_eq!(s, format!("ab {REDACTED} c"));
     }
 
@@ -361,9 +503,15 @@ mod tests {
 
     #[test]
     fn diff_lines() {
-        let lines = vec!["+      <password>secret</password>".to_string(), "+      <hostname>fw</hostname>".to_string()];
+        let lines = vec![
+            "+      <password>secret</password>".to_string(),
+            "+      <hostname>fw</hostname>".to_string(),
+        ];
         let out = redact_xml_lines(&lines);
-        assert!(out[0].contains(REDACTED) && !out[0].contains("secret"), "{out:?}");
+        assert!(
+            out[0].contains(REDACTED) && !out[0].contains("secret"),
+            "{out:?}"
+        );
         assert!(out[1].contains("<hostname>fw</hostname>"));
     }
 }

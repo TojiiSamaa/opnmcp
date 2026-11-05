@@ -52,7 +52,11 @@ impl Runtime {
                         }
                     })
                 };
-                let client = match OpnsenseClient::new(instance.clone(), config.unblocked.clone(), Some(hook)) {
+                let client = match OpnsenseClient::new(
+                    instance.clone(),
+                    config.unblocked.clone(),
+                    Some(hook),
+                ) {
                     Ok(c) => Arc::new(c),
                     Err(e) => {
                         error = Some(e);
@@ -68,9 +72,20 @@ impl Runtime {
                     })
                 };
                 let changes = ChangeManager::new(client.clone(), notify, None);
-                instances.push((name.clone(), Arc::new(InstanceRuntime { config: instance, client, changes })));
+                instances.push((
+                    name.clone(),
+                    Arc::new(InstanceRuntime {
+                        config: instance,
+                        client,
+                        changes,
+                    }),
+                ));
             }
-            Runtime { config: config.clone(), instances, listeners: Mutex::new((0, Vec::new())) }
+            Runtime {
+                config: config.clone(),
+                instances,
+                listeners: Mutex::new((0, Vec::new())),
+            }
         });
         match error {
             Some(e) => Err(e),
@@ -88,9 +103,20 @@ impl Runtime {
 
     pub fn instance(&self, name: Option<&str>) -> Result<Arc<InstanceRuntime>> {
         let key = name.unwrap_or(&self.config.default_instance);
-        self.instances.iter().find(|(n, _)| n == key).map(|(_, i)| i.clone()).ok_or_else(|| {
-            OpnError::new(ErrorType::InvalidInput, format!("Unknown instance \"{key}\".")).hint(format!("Known instances: {}", self.instance_names().join(", ")))
-        })
+        self.instances
+            .iter()
+            .find(|(n, _)| n == key)
+            .map(|(_, i)| i.clone())
+            .ok_or_else(|| {
+                OpnError::new(
+                    ErrorType::InvalidInput,
+                    format!("Unknown instance \"{key}\"."),
+                )
+                .hint(format!(
+                    "Known instances: {}",
+                    self.instance_names().join(", ")
+                ))
+            })
     }
 
     /// Abonne un écouteur aux avis du serveur ; renvoie l'identifiant à passer à `remove_listener`.
@@ -107,39 +133,63 @@ impl Runtime {
     }
 
     /// Exécute un outil en collectant les requêtes qui changent quelque chose, pour le journal d'audit.
-    pub async fn collect_writes<T>(&self, writes: WriteLog, run: impl std::future::Future<Output = T>) -> T {
+    pub async fn collect_writes<T>(
+        &self,
+        writes: WriteLog,
+        run: impl std::future::Future<Output = T>,
+    ) -> T {
         WRITE_SCOPE.scope(writes, run).await
     }
 
     pub fn audit(&self, entry: Value) {
-        let Some(path) = &self.config.audit_log else { return };
+        let Some(path) = &self.config.audit_log else {
+            return;
+        };
         let mut line = Map::new();
-        line.insert("ts".into(), json!(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)));
+        line.insert(
+            "ts".into(),
+            json!(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
+        );
         if let Value::Object(o) = entry {
             line.extend(o);
         }
         let text = format!("{}\n", Value::Object(line));
-        let result = std::fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut f| f.write_all(text.as_bytes()));
+        let result = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| f.write_all(text.as_bytes()));
         if let Err(e) = result {
             eprintln!("[osmcp] could not write the audit log: {e}");
         }
     }
 
     pub async fn shutdown(&self) {
-        let all = futures::future::join_all(self.instances.iter().map(|(_, i)| i.changes.shutdown()));
+        let all =
+            futures::future::join_all(self.instances.iter().map(|(_, i)| i.changes.shutdown()));
         let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, all).await;
     }
 
     fn notify(&self, level: &str, message: &str) {
         eprintln!("[osmcp] {level}: {message}");
-        let listeners: Vec<Notify> = self.listeners.lock().unwrap().1.iter().map(|(_, l)| l.clone()).collect();
+        let listeners: Vec<Notify> = self
+            .listeners
+            .lock()
+            .unwrap()
+            .1
+            .iter()
+            .map(|(_, l)| l.clone())
+            .collect();
         for l in listeners {
             l(level, message);
         }
     }
 
     fn on_write(&self, instance: &str, entry: WriteRecord) {
-        if WRITE_SCOPE.try_with(|scope| scope.lock().unwrap().push(entry.clone())).is_err() {
+        if WRITE_SCOPE
+            .try_with(|scope| scope.lock().unwrap().push(entry.clone()))
+            .is_err()
+        {
             // Hors d'un appel d'outil, c'est le minuteur de retour qui agit seul.
             self.audit(json!({ "instance": instance, "tool": "(background)", "writes": [entry.to_json()] }));
         }
@@ -152,6 +202,11 @@ impl Runtime {
             .append(true)
             .open(path)
             .map(|_| ())
-            .map_err(|e| OpnError::new(ErrorType::ConfigError, format!("OPNSENSE_AUDIT_LOG: cannot write to {path}: {e}")))
+            .map_err(|e| {
+                OpnError::new(
+                    ErrorType::ConfigError,
+                    format!("OPNSENSE_AUDIT_LOG: cannot write to {path}: {e}"),
+                )
+            })
     }
 }

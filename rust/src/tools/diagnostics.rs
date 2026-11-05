@@ -17,12 +17,17 @@ const PING_POLL: Duration = Duration::from_secs(1);
 fn hostname() -> Field {
     schema::string("hostname")
         .regex(r"^[A-Za-z0-9.:_-]+$", "Expected a host name or an address")
-        .check(|v| !v.starts_with('-'), "Expected a host name or an address")
+        .check(
+            |v| !v.starts_with('-'),
+            "Expected a host name or an address",
+        )
         .desc("Host name or IP address.")
 }
 
 fn family() -> Field {
-    schema::enumeration("family", &["inet", "inet6"]).opt().desc("inet = IPv4 (default), inet6 = IPv6.")
+    schema::enumeration("family", &["inet", "inet6"])
+        .opt()
+        .desc("inet = IPv4 (default), inet6 = IPv6.")
 }
 
 fn address(name: &'static str) -> Field {
@@ -57,17 +62,29 @@ fn num(v: &Value) -> f64 {
 
 fn rows_of(v: Option<&Value>) -> Vec<Value> {
     match v {
-        Some(Value::Object(o)) => o.get("rows").and_then(Value::as_array).cloned().unwrap_or_default(),
+        Some(Value::Object(o)) => o
+            .get("rows")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
         _ => Vec::new(),
     }
 }
 
 fn pick<'a>(row: &'a Value, keys: &[&str]) -> Option<&'a Value> {
-    keys.iter().filter_map(|k| row.get(*k)).find(|v| !v.is_null())
+    keys.iter()
+        .filter_map(|k| row.get(*k))
+        .find(|v| !v.is_null())
 }
 
 /// Un ping est une tâche du pare-feu : la créer, la démarrer, lire ses compteurs, l'arrêter et la retirer.
-async fn run_ping(ctx: &Ctx, hostname: &str, count: i64, family: Option<&str>, source: Option<&str>) -> Result<Value> {
+async fn run_ping(
+    ctx: &Ctx,
+    hostname: &str,
+    count: i64,
+    family: Option<&str>,
+    source: Option<&str>,
+) -> Result<Value> {
     let mut settings = Map::new();
     settings.insert("hostname".into(), json!(hostname));
     if let Some(f) = family {
@@ -76,13 +93,26 @@ async fn run_ping(ctx: &Ctx, hostname: &str, count: i64, family: Option<&str>, s
     if let Some(s) = source {
         settings.insert("source_address".into(), json!(s));
     }
-    let created = assert_write_ok(&ctx.api.post("diagnostics/ping/set", Some(json!({ "ping": { "settings": settings } })), RequestOptions::new()).await?, "Creating the ping")?;
+    let created = assert_write_ok(
+        &ctx.api
+            .post(
+                "diagnostics/ping/set",
+                Some(json!({ "ping": { "settings": settings } })),
+                RequestOptions::new(),
+            )
+            .await?,
+        "Creating the ping",
+    )?;
     let job_id = match created.get("uuid") {
         None | Some(Value::Null) => String::new(),
         v => js(v),
     };
     if job_id.is_empty() {
-        return Err(OpnError::new(ErrorType::BadResponse, "The firewall did not return a ping job id.").details(Value::Object(created)));
+        return Err(OpnError::new(
+            ErrorType::BadResponse,
+            "The firewall did not return a ping job id.",
+        )
+        .details(Value::Object(created)));
     }
 
     let outcome: Result<Value> = async {
@@ -113,8 +143,22 @@ async fn run_ping(ctx: &Ctx, hostname: &str, count: i64, family: Option<&str>, s
     .await;
 
     // Ne laisser aucune tâche derrière soi : rien d'autre ne l'arrête. Un échec ici ne doit pas cacher le résultat.
-    let _ = ctx.api.post("diagnostics/ping/stop", None, RequestOptions::new().param(&job_id)).await;
-    let _ = ctx.api.post("diagnostics/ping/remove", None, RequestOptions::new().param(&job_id)).await;
+    let _ = ctx
+        .api
+        .post(
+            "diagnostics/ping/stop",
+            None,
+            RequestOptions::new().param(&job_id),
+        )
+        .await;
+    let _ = ctx
+        .api
+        .post(
+            "diagnostics/ping/remove",
+            None,
+            RequestOptions::new().param(&job_id),
+        )
+        .await;
     outcome
 }
 
@@ -123,7 +167,11 @@ fn post_src(ctx: &Arc<Ctx>, path: &'static str, body: Value) -> BoxFut<Result<Va
     Box::pin(async move { c.api.post(path, Some(body), RequestOptions::new()).await })
 }
 
-fn get_src(ctx: &Arc<Ctx>, path: &'static str, query: Vec<(&'static str, String)>) -> BoxFut<Result<Value>> {
+fn get_src(
+    ctx: &Arc<Ctx>,
+    path: &'static str,
+    query: Vec<(&'static str, String)>,
+) -> BoxFut<Result<Value>> {
     let c = ctx.clone();
     Box::pin(async move {
         let mut o = RequestOptions::new();

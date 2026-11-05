@@ -25,8 +25,11 @@ struct CatalogFile {
 }
 
 /// Le catalogue vient de la documentation OPNsense ; il est lu une seule fois, au premier besoin.
-static CATALOG: LazyLock<Vec<CatalogEntry>> =
-    LazyLock::new(|| serde_json::from_str::<CatalogFile>(include_str!("../../endpoints.json")).expect("rust/endpoints.json invalide").endpoints);
+static CATALOG: LazyLock<Vec<CatalogEntry>> = LazyLock::new(|| {
+    serde_json::from_str::<CatalogFile>(include_str!("../../endpoints.json"))
+        .expect("rust/endpoints.json invalide")
+        .endpoints
+});
 
 fn path_field() -> Field {
     schema::string("path")
@@ -35,11 +38,18 @@ fn path_field() -> Field {
 }
 
 fn query_field() -> Field {
-    schema::record("query", vec![schema::plain_str(), Ty::Num { min: None }, Ty::Bool]).opt().desc("Query string parameters.")
+    schema::record(
+        "query",
+        vec![schema::plain_str(), Ty::Num { min: None }, Ty::Bool],
+    )
+    .opt()
+    .desc("Query string parameters.")
 }
 
 fn body_field() -> Field {
-    schema::unknown_record("body").opt().desc("JSON body, for POST.")
+    schema::unknown_record("body")
+        .opt()
+        .desc("JSON body, for POST.")
 }
 
 fn request_options(args: &Args) -> RequestOptions {
@@ -93,7 +103,14 @@ fn search(query: &str, source: Option<&str>, limit: usize) -> Value {
                 m.insert("params".into(), json!(e.params));
             }
             m.insert("source".into(), json!(e.source));
-            m.insert("access".into(), json!(if decision.blocked.is_some() { "blocked" } else { access_name(decision.access) }));
+            m.insert(
+                "access".into(),
+                json!(if decision.blocked.is_some() {
+                    "blocked"
+                } else {
+                    access_name(decision.access)
+                }),
+            );
             if decision.sensitive {
                 m.insert("sensitive".into(), json!(true));
             }
@@ -188,7 +205,11 @@ mod tests {
         let first = &r["results"][0];
         assert_eq!(first["access"], "read");
         let r = search("core system reboot", Some("core"), 40);
-        assert!(r["results"].as_array().unwrap().iter().any(|e| e["access"] == "blocked"));
+        assert!(r["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["access"] == "blocked"));
         assert_eq!(search("zzzz-no-such", None, 5)["total"], 0);
     }
 
@@ -196,11 +217,24 @@ mod tests {
     fn four_tools_with_the_expected_access() {
         let t = tools();
         let names: Vec<&str> = t.iter().map(|d| d.name.as_str()).collect();
-        assert_eq!(names, ["opn_search_api", "opn_describe_model", "opn_api_read", "opn_api_write"]);
+        assert_eq!(
+            names,
+            [
+                "opn_search_api",
+                "opn_describe_model",
+                "opn_api_read",
+                "opn_api_write"
+            ]
+        );
         assert_eq!(t[3].access, ToolAccess::Destructive);
         assert!(!t[2].idempotent);
-        let msg = (t[3].confirmation.as_ref().unwrap())(&Args(json!({"path": "a/b/c"}).as_object().unwrap().clone()));
-        assert_eq!(msg, "Call POST a/b/c on the firewall? There is no rollback for this.");
+        let msg = (t[3].confirmation.as_ref().unwrap())(&Args(
+            json!({"path": "a/b/c"}).as_object().unwrap().clone(),
+        ));
+        assert_eq!(
+            msg,
+            "Call POST a/b/c on the firewall? There is no rollback for this."
+        );
     }
 
     #[test]

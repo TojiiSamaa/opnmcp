@@ -5,7 +5,10 @@ use crate::changes::{ChangeManager, ChangeScope, Protection};
 use crate::client::{DryRunLog, OpnsenseClient, RequestOptions};
 use crate::config::{InstanceConfig, ServerConfig};
 use crate::error::{ErrorType, OpnError, Result};
-use crate::model::{assert_applied, assert_write_ok, compact_grid, flatten_model, model_fields, search_grid, GridArgs, Obj, PostClient};
+use crate::model::{
+    assert_applied, assert_write_ok, compact_grid, flatten_model, model_fields, search_grid,
+    GridArgs, Obj, PostClient,
+};
 use crate::schema::{self, Field, Schema};
 use serde_json::{json, Map, Value};
 use std::future::Future;
@@ -85,8 +88,18 @@ pub struct ScopedApi {
 }
 
 impl ScopedApi {
-    pub fn new(client: Arc<OpnsenseClient>, curated: bool, read_only: bool, dry_run: Option<DryRunLog>) -> Self {
-        Self { client, curated, read_only, dry_run }
+    pub fn new(
+        client: Arc<OpnsenseClient>,
+        curated: bool,
+        read_only: bool,
+        dry_run: Option<DryRunLog>,
+    ) -> Self {
+        Self {
+            client,
+            curated,
+            read_only,
+            dry_run,
+        }
     }
 
     fn apply(&self, mut o: RequestOptions) -> RequestOptions {
@@ -102,7 +115,12 @@ impl ScopedApi {
     pub async fn get(&self, path: &str, opts: RequestOptions) -> Result<Value> {
         self.client.get(path, self.apply(opts)).await
     }
-    pub async fn post(&self, path: &str, body: Option<Value>, opts: RequestOptions) -> Result<Value> {
+    pub async fn post(
+        &self,
+        path: &str,
+        body: Option<Value>,
+        opts: RequestOptions,
+    ) -> Result<Value> {
         self.client.post(path, body, self.apply(opts)).await
     }
     pub async fn get_(&self, path: &str) -> Result<Value> {
@@ -151,7 +169,9 @@ impl Args {
         self.str(k).unwrap_or("")
     }
     pub fn i64(&self, k: &str) -> Option<i64> {
-        self.0.get(k).and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
+        self.0
+            .get(k)
+            .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
     }
     pub fn f64(&self, k: &str) -> Option<f64> {
         self.0.get(k).and_then(Value::as_f64)
@@ -160,7 +180,15 @@ impl Args {
         self.0.get(k).and_then(Value::as_bool)
     }
     pub fn strs(&self, k: &str) -> Vec<String> {
-        self.0.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default()
+        self.0
+            .get(k)
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
     pub fn obj(&self) -> &Obj {
         &self.0
@@ -197,7 +225,13 @@ pub struct ToolBuilder {
     def: ToolDef,
 }
 
-pub fn tool(name: impl Into<String>, title: impl Into<String>, description: impl Into<String>, domain: Domain, access: ToolAccess) -> ToolBuilder {
+pub fn tool(
+    name: impl Into<String>,
+    title: impl Into<String>,
+    description: impl Into<String>,
+    domain: Domain,
+    access: ToolAccess,
+) -> ToolBuilder {
     ToolBuilder {
         def: ToolDef {
             name: name.into(),
@@ -210,13 +244,25 @@ pub fn tool(name: impl Into<String>, title: impl Into<String>, description: impl
             also: Vec::new(),
             input: Schema::default(),
             confirmation: None,
-            handler: Arc::new(|_, _| Box::pin(async { Err(OpnError::new(ErrorType::InternalError, "tool without handler")) })),
+            handler: Arc::new(|_, _| {
+                Box::pin(async {
+                    Err(OpnError::new(
+                        ErrorType::InternalError,
+                        "tool without handler",
+                    ))
+                })
+            }),
         },
     }
 }
 
 /// Outil de lecture idempotent, le cas le plus courant.
-pub fn read_tool(name: impl Into<String>, title: impl Into<String>, description: impl Into<String>, domain: Domain) -> ToolBuilder {
+pub fn read_tool(
+    name: impl Into<String>,
+    title: impl Into<String>,
+    description: impl Into<String>,
+    domain: Domain,
+) -> ToolBuilder {
     tool(name, title, description, domain, ToolAccess::Read).idempotent()
 }
 
@@ -254,19 +300,33 @@ impl ToolBuilder {
 /// Champs de pagination des listes.
 pub fn paging() -> Vec<Field> {
     vec![
-        schema::string("search").opt().desc("Text to look for in any field."),
-        schema::integer("limit").opt().min(1).max(500).desc("Rows per page (default 50, at most 500)."),
-        schema::integer("offset").opt().min(0).desc("Rows to skip. Use next_offset from the previous page."),
+        schema::string("search")
+            .opt()
+            .desc("Text to look for in any field."),
+        schema::integer("limit")
+            .opt()
+            .min(1)
+            .max(500)
+            .desc("Rows per page (default 50, at most 500)."),
+        schema::integer("offset")
+            .opt()
+            .min(0)
+            .desc("Rows to skip. Use next_offset from the previous page."),
     ]
 }
 
 pub fn uuid() -> Field {
-    schema::string("uuid").regex(r"^[0-9a-fA-F-]{36}$", "Expected a uuid").desc("Item uuid, from the matching list tool.")
+    schema::string("uuid")
+        .regex(r"^[0-9a-fA-F-]{36}$", "Expected a uuid")
+        .desc("Item uuid, from the matching list tool.")
 }
 
 pub fn require_fields(values: &Obj, what: &str) -> Result<()> {
     if values.is_empty() {
-        return Err(OpnError::new(ErrorType::InvalidInput, format!("{what}: no field to change was given.")));
+        return Err(OpnError::new(
+            ErrorType::InvalidInput,
+            format!("{what}: no field to change was given."),
+        ));
     }
     Ok(())
 }
@@ -300,7 +360,14 @@ fn merge(base: Obj, extra: Value) -> Value {
 
 /// Exécute une écriture du pare-feu dans le changement en cours. La base est prise avant la première écriture,
 /// sinon elle contiendrait déjà le changement.
-pub async fn staged_write<F, Fut>(ctx: &Ctx, scope: ChangeScope, action: &str, summary: &str, write: F, what: &str) -> Result<Value>
+pub async fn staged_write<F, Fut>(
+    ctx: &Ctx,
+    scope: ChangeScope,
+    action: &str,
+    summary: &str,
+    write: F,
+    what: &str,
+) -> Result<Value>
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<Value>>,
@@ -326,11 +393,21 @@ where
 }
 
 /// Écriture vers un service sans minuteur de retour : elle devient active au rechargement du service.
-pub async fn service_write<Fut>(ctx: &Ctx, write: Fut, what: &str, reconfigure: &[String], apply: bool) -> Result<Value>
+pub async fn service_write<Fut>(
+    ctx: &Ctx,
+    write: Fut,
+    what: &str,
+    reconfigure: &[String],
+    apply: bool,
+) -> Result<Value>
 where
     Fut: Future<Output = Result<Value>>,
 {
-    let before = if ctx.dry_run { None } else { ctx.changes.latest_backup().await.ok().flatten() };
+    let before = if ctx.dry_run {
+        None
+    } else {
+        ctx.changes.latest_backup().await.ok().flatten()
+    };
     let raw = write.await?;
     let res = assert_write_ok(&raw, what)?;
     let mut out = res;
@@ -345,7 +422,13 @@ where
         out.insert("applied".into(), json!(true));
     } else {
         out.insert("applied".into(), json!(false));
-        out.insert("next_step".into(), json!(format!("Saved, not live yet. Reconfigure with: {}", reconfigure.join(", "))));
+        out.insert(
+            "next_step".into(),
+            json!(format!(
+                "Saved, not live yet. Reconfigure with: {}",
+                reconfigure.join(", ")
+            )),
+        );
     }
     if let Some(b) = before {
         out.insert("revert_with".into(), json!({ "tool": "opn_restore_config_backup", "backup": b, "note": "This change has no automatic rollback. This backup is the configuration just before it." }));
@@ -354,13 +437,28 @@ where
 }
 
 /// Pour les bascules qui ne prennent pas d'état : lit l'état actuel et ne bascule que s'il diffère.
-pub async fn flip_to<Fut>(ctx: &Ctx, get_path: &str, wrapper: &str, uuid: &str, enabled: bool, what: &str, flip: Fut) -> Result<Value>
+pub async fn flip_to<Fut>(
+    ctx: &Ctx,
+    get_path: &str,
+    wrapper: &str,
+    uuid: &str,
+    enabled: bool,
+    what: &str,
+    flip: Fut,
+) -> Result<Value>
 where
     Fut: Future<Output = Result<Value>>,
 {
-    let res = ctx.api.get(get_path, RequestOptions::new().param(uuid)).await?;
+    let res = ctx
+        .api
+        .get(get_path, RequestOptions::new().param(uuid))
+        .await?;
     let Some(item) = res.get(wrapper).filter(|v| v.is_object()) else {
-        return Err(OpnError::new(ErrorType::NotFound, format!("{what}: the item was not found, so nothing was changed.")).hint("List the items again to get a current uuid."));
+        return Err(OpnError::new(
+            ErrorType::NotFound,
+            format!("{what}: the item was not found, so nothing was changed."),
+        )
+        .hint("List the items again to get a current uuid."));
     };
     let current = match item.get("enabled") {
         Some(Value::String(s)) => s.clone(),
@@ -368,10 +466,16 @@ where
         Some(other) => other.to_string(),
     };
     if current != "0" && current != "1" {
-        return Err(OpnError::new(ErrorType::BadResponse, format!("{what}: the current state is unreadable, so nothing was changed.")).details(json!({ "enabled": item.get("enabled").cloned().unwrap_or(Value::Null) })));
+        return Err(OpnError::new(
+            ErrorType::BadResponse,
+            format!("{what}: the current state is unreadable, so nothing was changed."),
+        )
+        .details(json!({ "enabled": item.get("enabled").cloned().unwrap_or(Value::Null) })));
     }
     if (current == "1") == enabled {
-        return Ok(json!({ "changed": false, "enabled": enabled, "note": "Already in this state: nothing was sent." }));
+        return Ok(
+            json!({ "changed": false, "enabled": enabled, "note": "Already in this state: nothing was sent." }),
+        );
     }
     let mut out = Map::new();
     out.insert("changed".into(), json!(true));
@@ -383,7 +487,9 @@ where
 }
 
 /// Lit plusieurs points d'accès dont chacun peut manquer ou être interdit, et dit lesquels.
-pub async fn gather(sources: Vec<(&'static str, BoxFut<Result<Value>>)>) -> (Obj, Map<String, Value>) {
+pub async fn gather(
+    sources: Vec<(&'static str, BoxFut<Result<Value>>)>,
+) -> (Obj, Map<String, Value>) {
     let (names, futs): (Vec<_>, Vec<_>) = sources.into_iter().unzip();
     let results = futures::future::join_all(futs).await;
     let mut data = Map::new();
@@ -394,7 +500,10 @@ pub async fn gather(sources: Vec<(&'static str, BoxFut<Result<Value>>)>) -> (Obj
                 data.insert(name.into(), v);
             }
             Err(e) => {
-                unavailable.insert(name.into(), json!(format!("{}: {}", e.kind.as_str(), e.message)));
+                unavailable.insert(
+                    name.into(),
+                    json!(format!("{}: {}", e.kind.as_str(), e.message)),
+                );
             }
         }
     }
@@ -444,7 +553,15 @@ pub struct CrudSpec {
 }
 
 impl CrudSpec {
-    pub fn new(domain: Domain, singular: &'static str, plural: &'static str, label: &'static str, base: &'static str, wrapper: &'static str, commands: Commands) -> Self {
+    pub fn new(
+        domain: Domain,
+        singular: &'static str,
+        plural: &'static str,
+        label: &'static str,
+        base: &'static str,
+        wrapper: &'static str,
+        commands: Commands,
+    ) -> Self {
         Self {
             domain,
             singular,
@@ -469,7 +586,10 @@ impl CrudSpec {
 }
 
 fn pick_fields(args: &Args, fields: &[Field]) -> Obj {
-    fields.iter().filter_map(|f| args.get(f.name).map(|v| (f.name.to_string(), v.clone()))).collect()
+    fields
+        .iter()
+        .filter_map(|f| args.get(f.name).map(|v| (f.name.to_string(), v.clone())))
+        .collect()
 }
 
 fn short(v: &Obj, n: usize) -> String {
@@ -486,7 +606,9 @@ pub fn crud_tools(spec: CrudSpec) -> Vec<ToolDef> {
     let has_apply = !spec.reconfigure.is_empty();
     let apply_field = || -> Vec<Field> {
         if has_apply {
-            vec![schema::boolean("apply").opt().desc("Reconfigure the service right away (default true).")]
+            vec![schema::boolean("apply")
+                .opt()
+                .desc("Reconfigure the service right away (default true).")]
         } else {
             Vec::new()
         }
@@ -497,7 +619,15 @@ pub fn crud_tools(spec: CrudSpec) -> Vec<ToolDef> {
         _ => String::new(),
     };
 
-    async fn commit(spec: &CrudSpec, ctx: Arc<Ctx>, args: &Args, action: &'static str, summary: String, write: impl Future<Output = Result<Value>>, what: String) -> Result<Value> {
+    async fn commit(
+        spec: &CrudSpec,
+        ctx: Arc<Ctx>,
+        args: &Args,
+        action: &'static str,
+        summary: String,
+        write: impl Future<Output = Result<Value>>,
+        what: String,
+    ) -> Result<Value> {
         let out = if let Some(scope) = spec.staged {
             staged_write(&ctx, scope, action, &summary, || write, &what).await?
         } else {
@@ -523,50 +653,99 @@ pub fn crud_tools(spec: CrudSpec) -> Vec<ToolDef> {
         let s = spec.clone();
         let search = c.search;
         defs.push(
-            read_tool(format!("opn_list_{}", spec.plural), format!("List {label}s"), format!("List {label}s, with pagination.{}", spec.list_note.map(|n| format!(" {n}")).unwrap_or_default()), domain)
-                .input(paging())
-                .run(move |args, ctx| {
-                    let s = s.clone();
-                    async move {
-                        let grid = search_grid(&ctx.api, &format!("{}/{}", s.base, search), &args.grid()).await?;
-                        Ok(compact_grid(&grid))
-                    }
-                }),
+            read_tool(
+                format!("opn_list_{}", spec.plural),
+                format!("List {label}s"),
+                format!(
+                    "List {label}s, with pagination.{}",
+                    spec.list_note.map(|n| format!(" {n}")).unwrap_or_default()
+                ),
+                domain,
+            )
+            .input(paging())
+            .run(move |args, ctx| {
+                let s = s.clone();
+                async move {
+                    let grid =
+                        search_grid(&ctx.api, &format!("{}/{}", s.base, search), &args.grid())
+                            .await?;
+                    Ok(compact_grid(&grid))
+                }
+            }),
         );
     }
     {
         let s = spec.clone();
         let get = c.get;
         defs.push(
-            read_tool(format!("opn_get_{}", spec.singular), format!("Get {label}"), format!("Get every field of one {label}, by uuid. Enum fields show the selected value."), domain)
-                .input(vec![uuid()])
-                .run(move |args, ctx| {
-                    let s = s.clone();
-                    async move {
-                        let res = ctx.api.get(&format!("{}/{}", s.base, get), RequestOptions::new().param(args.req("uuid"))).await?;
-                        let item = res.get(s.wrapper).cloned().unwrap_or(res);
-                        Ok(json!({ "uuid": args.req("uuid"), "item": flatten_model(&item) }))
-                    }
-                }),
+            read_tool(
+                format!("opn_get_{}", spec.singular),
+                format!("Get {label}"),
+                format!(
+                    "Get every field of one {label}, by uuid. Enum fields show the selected value."
+                ),
+                domain,
+            )
+            .input(vec![uuid()])
+            .run(move |args, ctx| {
+                let s = s.clone();
+                async move {
+                    let res = ctx
+                        .api
+                        .get(
+                            &format!("{}/{}", s.base, get),
+                            RequestOptions::new().param(args.req("uuid")),
+                        )
+                        .await?;
+                    let item = res.get(s.wrapper).cloned().unwrap_or(res);
+                    Ok(json!({ "uuid": args.req("uuid"), "item": flatten_model(&item) }))
+                }
+            }),
         );
     }
     if let (Some(add), false) = (c.add, spec.fields.is_empty()) {
         let s = spec.clone();
-        let mut input: Vec<Field> = spec.fields.iter().cloned().map(|mut f| {
-            f.optional = !spec.required.contains(&f.name);
-            f
-        }).collect();
+        let mut input: Vec<Field> = spec
+            .fields
+            .iter()
+            .cloned()
+            .map(|mut f| {
+                f.optional = !spec.required.contains(&f.name);
+                f
+            })
+            .collect();
         input.extend(apply_field());
         defs.push(
-            tool(format!("opn_add_{}", spec.singular), format!("Add {label}"), format!("Create a {label}.{write_note}"), domain, ToolAccess::Write).input(input).run(move |args, ctx| {
+            tool(
+                format!("opn_add_{}", spec.singular),
+                format!("Add {label}"),
+                format!("Create a {label}.{write_note}"),
+                domain,
+                ToolAccess::Write,
+            )
+            .input(input)
+            .run(move |args, ctx| {
                 let s = s.clone();
                 async move {
-                    let fields = s.to_model.as_ref().map_or_else(|| model_fields(&pick_fields(&args, &s.fields)), |f| f(&pick_fields(&args, &s.fields)));
+                    let fields = s.to_model.as_ref().map_or_else(
+                        || model_fields(&pick_fields(&args, &s.fields)),
+                        |f| f(&pick_fields(&args, &s.fields)),
+                    );
                     let path = format!("{}/{}", s.base, add);
                     let body = json!({ s.wrapper: fields.clone() });
                     let c2 = ctx.clone();
-                    let write = async move { c2.api.post(&path, Some(body), RequestOptions::new()).await };
-                    commit(&s, ctx, &args, "add", format!("add {}: {}", s.label, short(&fields, 200)), write, format!("Creating the {}", s.label)).await
+                    let write =
+                        async move { c2.api.post(&path, Some(body), RequestOptions::new()).await };
+                    commit(
+                        &s,
+                        ctx,
+                        &args,
+                        "add",
+                        format!("add {}: {}", s.label, short(&fields, 200)),
+                        write,
+                        format!("Creating the {}", s.label),
+                    )
+                    .await
                 }
             }),
         );
@@ -580,23 +759,47 @@ pub fn crud_tools(spec: CrudSpec) -> Vec<ToolDef> {
         }));
         input.extend(apply_field());
         defs.push(
-            tool(format!("opn_update_{}", spec.singular), format!("Update {label}"), format!("Change fields of a {label}. Fields left out keep their value.{write_note}"), domain, ToolAccess::Write)
-                .idempotent()
-                .input(input)
-                .run(move |args, ctx| {
-                    let s = s.clone();
-                    async move {
-                        let fields = s.to_model.as_ref().map_or_else(|| model_fields(&pick_fields(&args, &s.fields)), |f| f(&pick_fields(&args, &s.fields)));
-                        require_fields(&fields, &format!("Updating the {}", s.label))?;
-                        let uuid = args.req("uuid").to_string();
-                        let path = format!("{}/{}", s.base, set);
-                        let body = json!({ s.wrapper: fields.clone() });
-                        let c2 = ctx.clone();
-                        let u2 = uuid.clone();
-                        let write = async move { c2.api.post(&path, Some(body), RequestOptions::new().param(u2)).await };
-                        commit(&s, ctx, &args, "update", format!("update {} {}: {}", s.label, uuid, short(&fields, 200)), write, format!("Updating the {}", s.label)).await
-                    }
-                }),
+            tool(
+                format!("opn_update_{}", spec.singular),
+                format!("Update {label}"),
+                format!(
+                    "Change fields of a {label}. Fields left out keep their value.{write_note}"
+                ),
+                domain,
+                ToolAccess::Write,
+            )
+            .idempotent()
+            .input(input)
+            .run(move |args, ctx| {
+                let s = s.clone();
+                async move {
+                    let fields = s.to_model.as_ref().map_or_else(
+                        || model_fields(&pick_fields(&args, &s.fields)),
+                        |f| f(&pick_fields(&args, &s.fields)),
+                    );
+                    require_fields(&fields, &format!("Updating the {}", s.label))?;
+                    let uuid = args.req("uuid").to_string();
+                    let path = format!("{}/{}", s.base, set);
+                    let body = json!({ s.wrapper: fields.clone() });
+                    let c2 = ctx.clone();
+                    let u2 = uuid.clone();
+                    let write = async move {
+                        c2.api
+                            .post(&path, Some(body), RequestOptions::new().param(u2))
+                            .await
+                    };
+                    commit(
+                        &s,
+                        ctx,
+                        &args,
+                        "update",
+                        format!("update {} {}: {}", s.label, uuid, short(&fields, 200)),
+                        write,
+                        format!("Updating the {}", s.label),
+                    )
+                    .await
+                }
+            }),
         );
     }
     if let Some(del) = c.del {
@@ -604,21 +807,40 @@ pub fn crud_tools(spec: CrudSpec) -> Vec<ToolDef> {
         let mut input = vec![uuid()];
         input.extend(apply_field());
         defs.push(
-            tool(format!("opn_delete_{}", spec.singular), format!("Delete {label}"), format!("Delete a {label}.{write_note}"), domain, ToolAccess::Destructive)
-                .idempotent()
-                .input(input)
-                .confirm(move |a| format!("Delete {label} {}?", a.req("uuid")))
-                .run(move |args, ctx| {
-                    let s = s.clone();
-                    async move {
-                        let uuid = args.req("uuid").to_string();
-                        let path = format!("{}/{}", s.base, del);
-                        let c2 = ctx.clone();
-                        let u2 = uuid.clone();
-                        let write = async move { c2.api.post(&path, None, RequestOptions::new().param(u2)).await };
-                        commit(&s, ctx, &args, "delete", format!("delete {} {}", s.label, uuid), write, format!("Deleting the {}", s.label)).await
-                    }
-                }),
+            tool(
+                format!("opn_delete_{}", spec.singular),
+                format!("Delete {label}"),
+                format!("Delete a {label}.{write_note}"),
+                domain,
+                ToolAccess::Destructive,
+            )
+            .idempotent()
+            .input(input)
+            .confirm(move |a| format!("Delete {label} {}?", a.req("uuid")))
+            .run(move |args, ctx| {
+                let s = s.clone();
+                async move {
+                    let uuid = args.req("uuid").to_string();
+                    let path = format!("{}/{}", s.base, del);
+                    let c2 = ctx.clone();
+                    let u2 = uuid.clone();
+                    let write = async move {
+                        c2.api
+                            .post(&path, None, RequestOptions::new().param(u2))
+                            .await
+                    };
+                    commit(
+                        &s,
+                        ctx,
+                        &args,
+                        "delete",
+                        format!("delete {} {}", s.label, uuid),
+                        write,
+                        format!("Deleting the {}", s.label),
+                    )
+                    .await
+                }
+            }),
         );
     }
     if let Some(toggle) = c.toggle {

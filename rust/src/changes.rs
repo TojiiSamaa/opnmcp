@@ -131,7 +131,10 @@ const DEFAULT_RETRY_INTERVAL_MS: u64 = 10_000;
 const MAX_RETRIES: u32 = 18;
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn now_iso() -> String {
@@ -144,7 +147,14 @@ fn is_endpoint_missing(e: &OpnError) -> bool {
 
 /// Ces erreurs prouvent que la requête a été refusée. Après toute autre, le rechargement a pu avoir lieu.
 fn was_refused(e: &OpnError) -> bool {
-    e.is_any(&[ErrorType::Forbidden, ErrorType::NotFound, ErrorType::BadRequest, ErrorType::AuthFailed, ErrorType::BlockedEndpoint, ErrorType::WriteDisabled])
+    e.is_any(&[
+        ErrorType::Forbidden,
+        ErrorType::NotFound,
+        ErrorType::BadRequest,
+        ErrorType::AuthFailed,
+        ErrorType::BlockedEndpoint,
+        ErrorType::WriteDisabled,
+    ])
 }
 
 #[derive(Clone, Debug)]
@@ -168,7 +178,11 @@ pub struct ChangeManager {
 }
 
 impl ChangeManager {
-    pub fn new(client: Arc<OpnsenseClient>, notify: Notify, retry_interval_ms: Option<u64>) -> Arc<Self> {
+    pub fn new(
+        client: Arc<OpnsenseClient>,
+        notify: Notify,
+        retry_interval_ms: Option<u64>,
+    ) -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             client,
             notify,
@@ -188,7 +202,11 @@ impl ChangeManager {
     /// À appeler avant la première écriture d'un changement : la base doit la précéder.
     pub async fn begin_if_needed(&self) -> Result<()> {
         if self.rollback_in_flight() {
-            return Err(OpnError::new(ErrorType::ChangeInProgress, "A rollback is running, so this was not sent.").hint("See opn_pending_changes, and try again once it has finished."));
+            return Err(OpnError::new(
+                ErrorType::ChangeInProgress,
+                "A rollback is running, so this was not sent.",
+            )
+            .hint("See opn_pending_changes, and try again once it has finished."));
         }
         let _guard = self.begin_lock.lock().await;
         {
@@ -209,9 +227,21 @@ impl ChangeManager {
         let caps = self.client.capabilities().await?;
         let mut native_revision = None;
         if caps.native_savepoints != Some(false) {
-            match self.client.post("firewall/filter/savepoint", None, RequestOptions::new().curated()).await {
+            match self
+                .client
+                .post(
+                    "firewall/filter/savepoint",
+                    None,
+                    RequestOptions::new().curated(),
+                )
+                .await
+            {
                 Ok(res) => {
-                    if let Some(r) = res.get("revision").and_then(Value::as_str).filter(|r| !r.is_empty()) {
+                    if let Some(r) = res
+                        .get("revision")
+                        .and_then(Value::as_str)
+                        .filter(|r| !r.is_empty())
+                    {
                         native_revision = Some(r.to_string());
                     }
                 }
@@ -266,7 +296,11 @@ impl ChangeManager {
             let before = self.latest_backup().await.ok().flatten();
             let result = write().await?;
             // Sans cette liste la révision compte comme celle de quelqu'un d'autre : l'annulation s'arrête et demande.
-            let items = if before.is_some() { self.list_backups().await.unwrap_or_default() } else { Vec::new() };
+            let items = if before.is_some() {
+                self.list_backups().await.unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             if let Some(index) = items.iter().position(|i| Some(&i.id) == before.as_ref()) {
                 let mut inner = self.inner.lock().unwrap();
                 if let Some(set) = inner.current.as_mut().filter(|s| s.id == id) {
@@ -287,14 +321,24 @@ impl ChangeManager {
 
     pub fn record(&self, action: &str, scope: ChangeScope, summary: &str, uuid: Option<String>) {
         if let Some(set) = self.inner.lock().unwrap().current.as_mut() {
-            set.entries.push(ChangeEntry { at: now_iso(), action: action.into(), scope, summary: summary.into(), uuid });
+            set.entries.push(ChangeEntry {
+                at: now_iso(),
+                action: action.into(),
+                scope,
+                summary: summary.into(),
+                uuid,
+            });
         }
     }
 
     /// Si la première écriture d'un changement a échoué, il n'y a encore rien à protéger.
     pub fn discard_if_empty(&self) {
         let mut inner = self.inner.lock().unwrap();
-        if inner.current.as_ref().is_some_and(|s| s.entries.is_empty() && s.writes_in_flight == 0) {
+        if inner
+            .current
+            .as_ref()
+            .is_some_and(|s| s.entries.is_empty() && s.writes_in_flight == 0)
+        {
             inner.current = None;
         }
     }
@@ -324,23 +368,53 @@ impl ChangeManager {
     pub async fn apply(&self, rollback_seconds: i64) -> Result<Value> {
         let snapshot = {
             let inner = self.inner.lock().unwrap();
-            inner.current.as_ref().map(|s| (s.id, s.state, s.native_revision.clone(), s.entries.iter().any(|e| e.scope == ChangeScope::Alias), s.baseline_backup.clone(), Self::protection_of(s)))
+            inner.current.as_ref().map(|s| {
+                (
+                    s.id,
+                    s.state,
+                    s.native_revision.clone(),
+                    s.entries.iter().any(|e| e.scope == ChangeScope::Alias),
+                    s.baseline_backup.clone(),
+                    Self::protection_of(s),
+                )
+            })
         };
         let Some((id, state, native_revision, has_alias, baseline, protection)) = snapshot else {
-            let res = self.client.post("firewall/filter/apply", None, RequestOptions::new().curated().timeout_ms(RELOAD_TIMEOUT_MS)).await?;
+            let res = self
+                .client
+                .post(
+                    "firewall/filter/apply",
+                    None,
+                    RequestOptions::new()
+                        .curated()
+                        .timeout_ms(RELOAD_TIMEOUT_MS),
+                )
+                .await?;
             assert_ok(&res, "Reloading the firewall")?;
-            return Ok(json!({ "status": "applied", "protection": "none", "message": "No change tracked by this server: the firewall was reloaded with its current configuration. Nothing to confirm." }));
+            return Ok(
+                json!({ "status": "applied", "protection": "none", "message": "No change tracked by this server: the firewall was reloaded with its current configuration. Nothing to confirm." }),
+            );
         };
         if self.rollback_in_flight() || state != ChangeState::Staged {
-            return Err(OpnError::new(ErrorType::ChangeInProgress, "These changes were already applied: there is nothing new to apply.").hint("Call opn_confirm_changes or opn_rollback_changes. See opn_pending_changes."));
+            return Err(OpnError::new(
+                ErrorType::ChangeInProgress,
+                "These changes were already applied: there is nothing new to apply.",
+            )
+            .hint("Call opn_confirm_changes or opn_rollback_changes. See opn_pending_changes."));
         }
 
-        let seconds = if protection == Protection::FirewallSide { NATIVE_TIMER_SECONDS } else { rollback_seconds };
+        let seconds = if protection == Protection::FirewallSide {
+            NATIVE_TIMER_SECONDS
+        } else {
+            rollback_seconds
+        };
         // Le minuteur démarre d'abord : un rechargement peut durer plus que la requête, et le changement serait actif sans rien pour l'annuler.
         // Le natif démarre sur le pare-feu à l'arrivée de la requête, le nôtre ne doit pas durer plus.
         match protection {
             Protection::FirewallSide => self.arm(id, protection, seconds),
-            Protection::ServerSide => self.arm(id, protection, (RELOAD_TIMEOUT_MS / 1000) as i64 + seconds),
+            Protection::ServerSide => {
+                self.arm(id, protection, (RELOAD_TIMEOUT_MS / 1000) as i64 + seconds)
+            }
             Protection::None => {}
         }
         self.with_set(id, |s| s.applying = true);
@@ -350,17 +424,45 @@ impl ChangeManager {
             .track_write(|| async {
                 if protection == Protection::FirewallSide {
                     let rev = native_revision.clone().unwrap_or_default();
-                    let res = self.client.post("firewall/filter/apply", None, RequestOptions::new().curated().timeout_ms(RELOAD_TIMEOUT_MS).param(rev)).await?;
+                    let res = self
+                        .client
+                        .post(
+                            "firewall/filter/apply",
+                            None,
+                            RequestOptions::new()
+                                .curated()
+                                .timeout_ms(RELOAD_TIMEOUT_MS)
+                                .param(rev),
+                        )
+                        .await?;
                     assert_ok(&res, "Applying the changes")?;
                     return Ok(());
                 }
                 if has_alias {
                     // Cet appel recharge déjà le filtre : à partir de là le changement est actif.
-                    let res = self.client.post("firewall/alias/reconfigure", None, RequestOptions::new().curated().timeout_ms(RELOAD_TIMEOUT_MS)).await?;
+                    let res = self
+                        .client
+                        .post(
+                            "firewall/alias/reconfigure",
+                            None,
+                            RequestOptions::new()
+                                .curated()
+                                .timeout_ms(RELOAD_TIMEOUT_MS),
+                        )
+                        .await?;
                     assert_applied(&res, "Loading the aliases", false)?;
                     live = true;
                 }
-                let res = self.client.post("firewall/filter/apply", None, RequestOptions::new().curated().timeout_ms(RELOAD_TIMEOUT_MS)).await?;
+                let res = self
+                    .client
+                    .post(
+                        "firewall/filter/apply",
+                        None,
+                        RequestOptions::new()
+                            .curated()
+                            .timeout_ms(RELOAD_TIMEOUT_MS),
+                    )
+                    .await?;
                 assert_ok(&res, "Applying the changes")?;
                 Ok(())
             })
@@ -378,7 +480,9 @@ impl ChangeManager {
             if protection == Protection::ServerSide {
                 self.arm(id, protection, seconds);
             }
-            let (expires, baseline) = self.with_set(id, |s| (s.expires_at_ms, s.baseline_backup.clone())).unwrap_or((None, baseline));
+            let (expires, baseline) = self
+                .with_set(id, |s| (s.expires_at_ms, s.baseline_backup.clone()))
+                .unwrap_or((None, baseline));
             return Ok(json!({
                 "status": "apply_outcome_unknown",
                 "protection": protection.as_str(),
@@ -394,18 +498,32 @@ impl ChangeManager {
         if protection == Protection::None {
             // Appliqué sans retour possible : plus rien à confirmer.
             self.finish(id, "applied without rollback protection");
-            return Ok(json!({ "status": "applied", "protection": "none", "message": "The changes are live and permanent. No automatic rollback was possible." }));
+            return Ok(
+                json!({ "status": "applied", "protection": "none", "message": "The changes are live and permanent. No automatic rollback was possible." }),
+            );
         }
         if !self.is_current(id) {
-            return Ok(json!({ "status": "reverted", "protection": protection.as_str(), "message": "The reload took longer than the rollback timer of the firewall, which has reverted the changes." }));
+            return Ok(
+                json!({ "status": "reverted", "protection": protection.as_str(), "message": "The reload took longer than the rollback timer of the firewall, which has reverted the changes." }),
+            );
         }
         if protection == Protection::ServerSide {
             self.arm(id, protection, seconds);
         }
 
         let reachable = self.check_reachable().await;
-        let (expires, baseline, lockout) = self.with_set(id, |s| (s.expires_at_ms, s.baseline_backup.clone(), lockout_message(s.baseline_backup.as_deref()))).unwrap_or((None, None, String::new()));
-        let left = ((expires.unwrap_or_else(now_ms) - now_ms()) as f64 / 1000.0).round().max(0.0) as i64;
+        let (expires, baseline, lockout) = self
+            .with_set(id, |s| {
+                (
+                    s.expires_at_ms,
+                    s.baseline_backup.clone(),
+                    lockout_message(s.baseline_backup.as_deref()),
+                )
+            })
+            .unwrap_or((None, None, String::new()));
+        let left = ((expires.unwrap_or_else(now_ms) - now_ms()) as f64 / 1000.0)
+            .round()
+            .max(0.0) as i64;
         let message = if protection == Protection::FirewallSide {
             format!("The changes are live. The firewall itself reverts them in {left} s unless opn_confirm_changes is called.")
         } else {
@@ -433,7 +551,12 @@ impl ChangeManager {
     }
 
     fn is_current(&self, id: u64) -> bool {
-        self.inner.lock().unwrap().current.as_ref().is_some_and(|s| s.id == id)
+        self.inner
+            .lock()
+            .unwrap()
+            .current
+            .as_ref()
+            .is_some_and(|s| s.id == id)
     }
 
     fn arm(&self, id: u64, protection: Protection, seconds: i64) {
@@ -452,8 +575,7 @@ impl ChangeManager {
             s.state = ChangeState::Armed;
             s.expires_at_ms = Some(now_ms() + seconds * 1000);
             s.timer = Some(handle);
-        })
-        ;
+        });
     }
 
     fn disarm(&self, id: u64) {
@@ -475,15 +597,21 @@ impl ChangeManager {
         if protection == Some(Protection::FirewallSide) {
             // Le pare-feu a déjà annulé de lui-même, rien à envoyer.
             self.finish(id, "reverted by the firewall timer");
-            self.announce("warning", "The firewall changes were not confirmed in time, and the firewall reverted them.");
+            self.announce(
+                "warning",
+                "The firewall changes were not confirmed in time, and the firewall reverted them.",
+            );
             return;
         }
         self.auto_rollback(id).await;
     }
 
-    fn auto_rollback(self: Arc<Self>, id: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+    fn auto_rollback(
+        self: Arc<Self>,
+        id: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         Box::pin(async move {
-        match self.rollback(false, Some("not confirmed in time")).await {
+            match self.rollback(false, Some("not confirmed in time")).await {
             Ok(_) => self.announce("warning", "The firewall changes were not confirmed in time, so this server restored the previous configuration."),
             Err(err) => {
                 if !self.is_current(id) {
@@ -518,34 +646,68 @@ impl ChangeManager {
                 self.announce("error", &format!("Automatic rollback did not complete: {}. The change is still live. {lockout}", err.message));
             }
         }
-            })
+        })
     }
 
     pub async fn confirm(&self) -> Result<Value> {
         let snapshot = {
             let inner = self.inner.lock().unwrap();
-            inner.current.as_ref().map(|s| (s.id, s.state, s.applying, s.protection, s.native_revision.clone(), s.entries.len()))
+            inner.current.as_ref().map(|s| {
+                (
+                    s.id,
+                    s.state,
+                    s.applying,
+                    s.protection,
+                    s.native_revision.clone(),
+                    s.entries.len(),
+                )
+            })
         };
         let Some((id, state, applying, protection, native_revision, entries)) = snapshot else {
-            return Err(OpnError::new(ErrorType::NoPendingChange, "There is no pending firewall change to confirm."));
+            return Err(OpnError::new(
+                ErrorType::NoPendingChange,
+                "There is no pending firewall change to confirm.",
+            ));
         };
         if self.rollback_in_flight() {
-            return Err(OpnError::new(ErrorType::ChangeInProgress, "A rollback is running, so this change can no longer be confirmed.").hint("See opn_pending_changes for the outcome."));
+            return Err(OpnError::new(
+                ErrorType::ChangeInProgress,
+                "A rollback is running, so this change can no longer be confirmed.",
+            )
+            .hint("See opn_pending_changes for the outcome."));
         }
         if applying {
-            return Err(OpnError::new(ErrorType::ChangeInProgress, "The firewall is still applying this change, so there is nothing to confirm yet.").hint("Wait for the answer of opn_apply_firewall_changes."));
+            return Err(OpnError::new(
+                ErrorType::ChangeInProgress,
+                "The firewall is still applying this change, so there is nothing to confirm yet.",
+            )
+            .hint("Wait for the answer of opn_apply_firewall_changes."));
         }
         if state == ChangeState::Staged {
-            return Err(OpnError::new(ErrorType::NoPendingChange, "The changes are staged but not applied yet, so there is nothing to confirm.").hint("Call opn_apply_firewall_changes first."));
+            return Err(OpnError::new(
+                ErrorType::NoPendingChange,
+                "The changes are staged but not applied yet, so there is nothing to confirm.",
+            )
+            .hint("Call opn_apply_firewall_changes first."));
         }
         let native = protection == Some(Protection::FirewallSide);
         if native {
             // Le script derrière n'affiche rien, qu'il marche ou non : la réponse ne prouve rien.
             let rev = native_revision.unwrap_or_default();
-            let res = self.client.post("firewall/filter/cancel_rollback", None, RequestOptions::new().curated().param(rev)).await?;
+            let res = self
+                .client
+                .post(
+                    "firewall/filter/cancel_rollback",
+                    None,
+                    RequestOptions::new().curated().param(rev),
+                )
+                .await?;
             assert_applied(&res, "Cancelling the firewall timer", true)?;
             if !self.is_current(id) {
-                return Err(OpnError::new(ErrorType::NoPendingChange, "The delay ran out in the meantime, and the firewall reverted the changes."));
+                return Err(OpnError::new(
+                    ErrorType::NoPendingChange,
+                    "The delay ran out in the meantime, and the firewall reverted the changes.",
+                ));
             }
         }
         self.finish(id, "confirmed");
@@ -568,7 +730,17 @@ impl ChangeManager {
     async fn run_rollback(&self, force: bool, reason: Option<&str>) -> Result<Value> {
         let snapshot = {
             let inner = self.inner.lock().unwrap();
-            inner.current.as_ref().map(|s| (s.id, Self::can_use_native(s), s.native_revision.clone(), s.baseline_backup.clone(), s.entries.iter().any(|e| e.scope == ChangeScope::Alias), s.entries.len(), s.own_revisions.clone()))
+            inner.current.as_ref().map(|s| {
+                (
+                    s.id,
+                    Self::can_use_native(s),
+                    s.native_revision.clone(),
+                    s.baseline_backup.clone(),
+                    s.entries.iter().any(|e| e.scope == ChangeScope::Alias),
+                    s.entries.len(),
+                    s.own_revisions.clone(),
+                )
+            })
         };
         let Some((id, native, native_revision, baseline, has_alias, undone, own)) = snapshot else {
             return Err(OpnError::new(ErrorType::NoPendingChange, "There is no pending firewall change to roll back.").hint("To go back to an older configuration, use opn_list_config_backups and opn_restore_config_backup."));
@@ -576,23 +748,80 @@ impl ChangeManager {
         let method;
         if native {
             let rev = native_revision.unwrap_or_default();
-            let res = self.client.post("firewall/filter/revert", None, RequestOptions::new().curated().timeout_ms(RELOAD_TIMEOUT_MS).param(rev)).await?;
+            let res = self
+                .client
+                .post(
+                    "firewall/filter/revert",
+                    None,
+                    RequestOptions::new()
+                        .curated()
+                        .timeout_ms(RELOAD_TIMEOUT_MS)
+                        .param(rev),
+                )
+                .await?;
             assert_ok(&res, "Reverting the firewall changes")?;
             method = "native revert";
         } else if let Some(baseline) = baseline {
-            self.assert_no_foreign_changes(&baseline, &own, force).await?;
+            self.assert_no_foreign_changes(&baseline, &own, force)
+                .await?;
             // Suivi, car une nouvelle tentative ne doit pas prendre cet enregistrement pour celui d'un autre.
             let b = baseline.clone();
-            let res = self.track_write(|| async { self.client.post("core/backup/revert_backup", None, RequestOptions::new().curated().param(b)).await }).await?;
-            let status = res.get("status").map(|v| v.as_str().map(String::from).unwrap_or_else(|| v.to_string())).unwrap_or_default();
+            let res = self
+                .track_write(|| async {
+                    self.client
+                        .post(
+                            "core/backup/revert_backup",
+                            None,
+                            RequestOptions::new().curated().param(b),
+                        )
+                        .await
+                })
+                .await?;
+            let status = res
+                .get("status")
+                .map(|v| {
+                    v.as_str()
+                        .map(String::from)
+                        .unwrap_or_else(|| v.to_string())
+                })
+                .unwrap_or_default();
             if status != "reverted" {
-                return Err(OpnError::new(ErrorType::RollbackFailed, format!("The firewall did not restore backup {baseline} (status: {}).", if status.is_empty() { "unknown" } else { &status })).details(res));
+                return Err(OpnError::new(
+                    ErrorType::RollbackFailed,
+                    format!(
+                        "The firewall did not restore backup {baseline} (status: {}).",
+                        if status.is_empty() {
+                            "unknown"
+                        } else {
+                            &status
+                        }
+                    ),
+                )
+                .details(res));
             }
             // revert_backup ne réécrit que config.xml : rien n'atteint pf avant le rechargement.
-            let res = self.client.post("firewall/filter/apply", None, RequestOptions::new().curated().timeout_ms(RELOAD_TIMEOUT_MS)).await?;
+            let res = self
+                .client
+                .post(
+                    "firewall/filter/apply",
+                    None,
+                    RequestOptions::new()
+                        .curated()
+                        .timeout_ms(RELOAD_TIMEOUT_MS),
+                )
+                .await?;
             assert_ok(&res, "Reloading the firewall")?;
             if has_alias {
-                let res = self.client.post("firewall/alias/reconfigure", None, RequestOptions::new().curated().timeout_ms(RELOAD_TIMEOUT_MS)).await?;
+                let res = self
+                    .client
+                    .post(
+                        "firewall/alias/reconfigure",
+                        None,
+                        RequestOptions::new()
+                            .curated()
+                            .timeout_ms(RELOAD_TIMEOUT_MS),
+                    )
+                    .await?;
                 assert_applied(&res, "Reloading the aliases", false)?;
             }
             method = "configuration restore";
@@ -607,15 +836,28 @@ impl ChangeManager {
 
     /// Restaurer une sauvegarde remplace tout config.xml : cela jetterait aussi ce qui a été enregistré entre-temps.
     /// Seules les révisions de ce changement peuvent partir.
-    async fn assert_no_foreign_changes(&self, baseline: &str, own: &HashSet<String>, force: bool) -> Result<()> {
+    async fn assert_no_foreign_changes(
+        &self,
+        baseline: &str,
+        own: &HashSet<String>,
+        force: bool,
+    ) -> Result<()> {
         let items = self.list_backups().await?;
         let Some(index) = items.iter().position(|i| i.id == baseline) else {
             return Err(OpnError::new(ErrorType::RollbackFailed, format!("Backup {baseline} is no longer on the firewall."))
                 .hint("The backup count may be too low for the number of changes. Pick another backup with opn_list_config_backups."));
         };
-        let foreign: Vec<&BackupItem> = items[..index].iter().filter(|i| !own.contains(&i.id)).collect();
+        let foreign: Vec<&BackupItem> = items[..index]
+            .iter()
+            .filter(|i| !own.contains(&i.id))
+            .collect();
         if !foreign.is_empty() && !force {
-            let revisions: Vec<Value> = foreign.iter().map(|f| json!({ "id": f.id, "username": f.username, "description": f.description })).collect();
+            let revisions: Vec<Value> = foreign
+                .iter()
+                .map(
+                    |f| json!({ "id": f.id, "username": f.username, "description": f.description }),
+                )
+                .collect();
             return Err(OpnError::new(
                 ErrorType::RollbackBlocked,
                 format!("The configuration was also saved outside this change since the baseline ({} revision(s)), by someone else or by a service write: restoring it would discard that too.", foreign.len()),
@@ -628,11 +870,20 @@ impl ChangeManager {
 
     pub fn status(&self) -> Value {
         let inner = self.inner.lock().unwrap();
-        let recent: Vec<Value> = inner.history.iter().rev().take(5).rev().map(|(at, event)| json!({ "at": at, "event": event })).collect();
+        let recent: Vec<Value> = inner
+            .history
+            .iter()
+            .rev()
+            .take(5)
+            .rev()
+            .map(|(at, event)| json!({ "at": at, "event": event }))
+            .collect();
         let Some(set) = inner.current.as_ref() else {
             return json!({ "pending": false, "recent": recent });
         };
-        let remaining = set.expires_at_ms.map(|e| ((e - now_ms()) as f64 / 1000.0).round().max(0.0) as i64);
+        let remaining = set
+            .expires_at_ms
+            .map(|e| ((e - now_ms()) as f64 / 1000.0).round().max(0.0) as i64);
         let mut out = json!({
             "pending": true,
             "state": set.state.as_str(),
@@ -660,11 +911,19 @@ impl ChangeManager {
             let inner = self.inner.lock().unwrap();
             inner.current.as_ref().map(|s| (s.state, s.protection))
         };
-        let Some((state, protection)) = snapshot else { return };
+        let Some((state, protection)) = snapshot else {
+            return;
+        };
         if state == ChangeState::Armed && protection == Some(Protection::ServerSide) {
-            match self.rollback(false, Some("server shutting down before confirmation")).await {
+            match self
+                .rollback(false, Some("server shutting down before confirmation"))
+                .await
+            {
                 Ok(_) => eprintln!("[osmcp] unconfirmed firewall change rolled back on shutdown"),
-                Err(e) => eprintln!("[osmcp] could not roll back the unconfirmed change on shutdown: {}", e.message),
+                Err(e) => eprintln!(
+                    "[osmcp] could not roll back the unconfirmed change on shutdown: {}",
+                    e.message
+                ),
             }
         } else if state == ChangeState::Staged {
             eprintln!("[osmcp] warning: firewall changes are staged but not applied; the next firewall reload will make them live.");
@@ -702,23 +961,44 @@ impl ChangeManager {
     }
 
     async fn check_reachable(&self) -> bool {
-        match self.client.get("core/system/status", RequestOptions::new().timeout_ms(8_000).fresh()).await {
+        match self
+            .client
+            .get(
+                "core/system/status",
+                RequestOptions::new().timeout_ms(8_000).fresh(),
+            )
+            .await
+        {
             Ok(_) => true,
             // Un 403 ou un 404 prouve quand même que le pare-feu a répondu.
-            Err(e) => !e.is_any(&[ErrorType::Unreachable, ErrorType::Timeout, ErrorType::TlsError]),
+            Err(e) => !e.is_any(&[
+                ErrorType::Unreachable,
+                ErrorType::Timeout,
+                ErrorType::TlsError,
+            ]),
         }
     }
 
     async fn list_backups(&self) -> Result<Vec<BackupItem>> {
-        let res = self.client.get("core/backup/backups", RequestOptions::new().param("this")).await?;
-        let items = res.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+        let res = self
+            .client
+            .get("core/backup/backups", RequestOptions::new().param("this"))
+            .await?;
+        let items = res
+            .get("items")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
         Ok(items
             .iter()
             .filter_map(|i| {
                 Some(BackupItem {
                     id: i.get("id")?.as_str()?.to_string(),
                     username: i.get("username").and_then(Value::as_str).map(String::from),
-                    description: i.get("description").and_then(Value::as_str).map(String::from),
+                    description: i
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .map(String::from),
                 })
             })
             .collect())
@@ -742,4 +1022,3 @@ fn lockout_message(baseline: Option<&str>) -> String {
     };
     format!("If the firewall stays unreachable, the rollback cannot be sent.{backup} from the console (opnsense-shell, option 13 \"Restore a backup\") or from any path that still reaches the web interface.")
 }
-
