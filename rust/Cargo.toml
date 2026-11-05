@@ -1,0 +1,42 @@
+[package]
+name = "osmcp"
+version = "0.1.0"
+edition = "2021"
+description = "Serveur MCP pour pare-feu OPNsense (portage Rust) : un outil par demande, lecture seule par défaut, rollback réel y compris sur 26.7+."
+license = "MIT"
+rust-version = "1.80"
+
+[lib]
+name = "osmcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "osmcp"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "io-std", "fs", "signal", "net", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+quick-xml = "0.37"
+regex = "1"
+futures = "0.3"
+url = "2"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+uuid = { version = "1", features = ["v4"] }
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+debug = 0
+incremental = false
