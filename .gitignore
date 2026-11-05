@@ -1,7 +1,2 @@
 node_modules/
 dist/
-coverage/
-*.log
-.env
-instances.json
-apikey*.txt

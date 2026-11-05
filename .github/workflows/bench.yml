@@ -1,0 +1,65 @@
+name: Banc TS contre Rust
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+  push:
+    branches: [rust-port, main]
+    paths: ["src/**", "rust/**", "bench/**", "package.json", ".github/workflows/bench.yml"]
+  pull_request:
+    paths: ["src/**", "rust/**", "bench/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Tests et build TypeScript
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: Tests et build Rust
+        working-directory: rust
+        run: |
+          cargo test --locked
+          cargo build --release --locked
+
+      - name: Banc
+        run: |
+          node bench/bench.mjs
+          node bench/chart.mjs
+          cat bench/results.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench
+          path: bench/results.*
+
+      - name: Publier le graphe (hors pull request)
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bench/results.json bench/results.md bench/chart.svg
+          if git diff --cached --quiet; then echo "Rien à publier"; exit 0; fi
+          git commit -m "bench: mise à jour des résultats [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
